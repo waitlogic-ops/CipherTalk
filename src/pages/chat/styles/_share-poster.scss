@@ -1,0 +1,302 @@
+/* ===== 多选模式 ===== */
+.message-list.select-mode .message-wrapper > *:not(.select-checkbox):not(.date-divider) {
+  pointer-events: none;
+}
+
+.message-wrapper.selectable {
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: rgba(7, 193, 96, 0.06);
+  }
+
+  &.selected {
+    background-color: rgba(7, 193, 96, 0.12);
+  }
+}
+
+.select-checkbox {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #c0c0c0;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  z-index: 2;
+
+  .message-wrapper.received & { left: 10px; }
+  .message-wrapper.sent & { right: 10px; }
+  .message-wrapper.system & { left: 50%; margin-left: -10px; }
+
+  &.checked {
+    background: #07c160;
+    border-color: #07c160;
+  }
+}
+
+/* ===== 底部操作栏 ===== */
+.select-action-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--bg-secondary, #fff);
+  border-top: 1px solid var(--border-color, #e5e5e5);
+}
+
+.select-action-bar__count {
+  font-size: 13px;
+  color: var(--text-secondary, #888);
+}
+
+.select-action-bar__btns {
+  display: flex;
+  gap: 8px;
+}
+
+.select-action-bar__btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #ddd);
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+  cursor: pointer;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+
+  &:hover { filter: brightness(0.97); }
+
+  &--primary {
+    background: #07c160;
+    border-color: #07c160;
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* ===== 海报弹窗 ===== */
+.poster-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.poster-dialog {
+  width: 520px;
+  max-width: 92vw;
+  max-height: 88vh;
+  background: var(--bg-primary, #fff);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
+}
+
+.poster-dialog__toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #eee);
+}
+
+.poster-dialog__hint {
+  font-size: 13px;
+  color: var(--text-secondary, #999);
+}
+
+.poster-dialog__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.poster-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #ddd);
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+  cursor: pointer;
+
+  &:hover { filter: brightness(0.97); }
+
+  &--primary {
+    background: #07c160;
+    border-color: #07c160;
+    color: #fff;
+  }
+
+  &--icon { padding: 6px; }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+.poster-spin {
+  animation: poster-spin 0.8s linear infinite;
+}
+
+@keyframes poster-spin {
+  to { transform: rotate(360deg); }
+}
+
+.poster-dialog__scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background: #d6d6d6;
+}
+
+/* 截图区域：固定微信浅色风格，不随主题变化 */
+.poster-card {
+  width: 400px;
+  margin: 0 auto;
+  background: #ededed;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.poster-card__header {
+  padding: 16px 18px 12px;
+  text-align: center;
+  background: #f7f7f7;
+  border-bottom: 1px solid #e3e3e3;
+}
+
+.poster-card__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.poster-card__subtitle {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #9a9a9a;
+}
+
+.poster-card__body {
+  padding: 14px 14px 6px;
+}
+
+.poster-divider {
+  text-align: center;
+  margin: 10px 0;
+
+  span {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+  }
+}
+
+.poster-system {
+  text-align: center;
+  margin: 8px auto;
+  max-width: 80%;
+  font-size: 11px;
+  color: #9a9a9a;
+}
+
+.poster-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 14px;
+
+  &.sent { flex-direction: row-reverse; }
+}
+
+.poster-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #c8c8c8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  span {
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+  }
+}
+
+.poster-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 270px;
+  min-width: 0;
+
+  .poster-row.sent & { align-items: flex-end; }
+}
+
+.poster-name {
+  font-size: 11px;
+  color: #9a9a9a;
+  margin: 0 2px 3px;
+}
+
+.poster-bubble {
+  position: relative;
+  padding: 8px 11px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #fff;
+  border-radius: 6px;
+  word-break: break-word;
+  white-space: pre-wrap;
+
+  .poster-row.sent & {
+    background: #95ec69;
+  }
+}
+
+.poster-card__footer {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: #b0b0b0;
+  background: #f7f7f7;
+  border-top: 1px solid #e3e3e3;
+}

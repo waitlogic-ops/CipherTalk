@@ -92,6 +92,15 @@ export default defineConfig({
         }
       },
       {
+        entry: 'electron/agentToolWorker.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: { external }
+          }
+        }
+      },
+      {
         entry: 'electron/mcp.ts',
         vite: {
           build: {

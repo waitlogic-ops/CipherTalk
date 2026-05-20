@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
 import type { RefObject } from 'react'
 import ChatBackground from '../../../components/ChatBackground'
@@ -21,6 +21,8 @@ interface MessageListProps {
   hasImageKey: boolean | null
   quoteStyle: QuoteStyle
   selectedMessages: Set<number>
+  selectMode: boolean
+  onToggleSelect: (localId: number) => void
   setContextMenu: React.Dispatch<React.SetStateAction<ContextMenuState | null>>
   showScrollToBottom: boolean
   scrollToBottom: (smooth?: boolean | React.MouseEvent) => void
@@ -38,6 +40,8 @@ export function MessageList({
   hasImageKey,
   quoteStyle,
   selectedMessages,
+  selectMode,
+  onToggleSelect,
   setContextMenu,
   showScrollToBottom,
   scrollToBottom
@@ -50,13 +54,21 @@ export function MessageList({
     const isSystem = isSystemMessage(msg)
     const wrapperClass = isSystem ? 'system' : (isSent ? 'sent' : 'received')
     const messageDomKey = getMessageDomKey(msg)
+    const isSelectable = selectMode && !isSystem
+    const isSelected = selectedMessages.has(msg.localId)
 
     return (
       <div
         key={messageDomKey}
-        className={`message-wrapper ${wrapperClass}`}
+        className={`message-wrapper ${wrapperClass}${isSelectable ? ' selectable' : ''}${isSelectable && isSelected ? ' selected' : ''}`}
         data-message-key={messageDomKey}
+        onClick={isSelectable ? () => onToggleSelect(msg.localId) : undefined}
       >
+        {isSelectable && (
+          <div className={`select-checkbox${isSelected ? ' checked' : ''}`}>
+            {isSelected && <Check size={13} strokeWidth={3} />}
+          </div>
+        )}
         {showDateDivider && (
           <div className="date-divider">
             <span>{formatDateDivider(msg.createTime)}</span>
@@ -125,6 +137,8 @@ export function MessageList({
     hasImageKey,
     quoteStyle,
     selectedMessages,
+    selectMode,
+    onToggleSelect,
     setContextMenu
   ])
 
@@ -160,7 +174,7 @@ export function MessageList({
 
   return (
     <div
-      className="message-list"
+      className={`message-list${selectMode ? ' select-mode' : ''}`}
       ref={messageListRef}
       onScroll={onScroll}
     >

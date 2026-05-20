@@ -18,6 +18,7 @@ import { ChatHeader } from './components/ChatHeader'
 import { MessageList } from './components/MessageList'
 import { SessionDetailPanel } from './components/SessionDetailPanel'
 import { SessionSidebar } from './components/SessionSidebar'
+import { SharePosterModal } from './components/SharePosterModal'
 import { ContextMenuPortal } from './components/portals/ContextMenuPortal'
 import { EnlargeViewModal } from './components/portals/EnlargeViewModal'
 import { MessageInfoModal } from './components/portals/MessageInfoModal'
@@ -139,6 +140,8 @@ function ChatPage(_props: ChatPageProps) {
     closeContextMenu
   } = useContextMenuState()
   const [selectedMessages, setSelectedMessages] = useState<Set<number>>(new Set())
+  const [selectMode, setSelectMode] = useState(false)
+  const [showPoster, setShowPoster] = useState(false)
   const [showEnlargeView, setShowEnlargeView] = useState<{ message: Message; content: string } | null>(null)
   const { topToast, showTopToast } = useTopToast()
   const [showMessageInfo, setShowMessageInfo] = useState<Message | null>(null) // 消息信息弹窗
@@ -606,6 +609,38 @@ function ChatPage(_props: ChatPageProps) {
       console.error('复制失败:', e)
     }
   }, [showTopToast])
+
+  const enterSelectMode = useCallback((localId: number) => {
+    setSelectMode(true)
+    setSelectedMessages(new Set([localId]))
+  }, [])
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setShowPoster(false)
+    setSelectedMessages(new Set())
+  }, [])
+
+  const toggleSelectMessage = useCallback((localId: number) => {
+    setSelectedMessages(prev => {
+      const next = new Set(prev)
+      if (next.has(localId)) next.delete(localId)
+      else next.add(localId)
+      return next
+    })
+  }, [])
+
+  // 切换会话时退出多选模式
+  useEffect(() => {
+    setSelectMode(false)
+    setShowPoster(false)
+    setSelectedMessages(new Set())
+  }, [currentSessionId])
+
+  const posterMessages = useMemo(
+    () => messages.filter(m => selectedMessages.has(m.localId)),
+    [messages, selectedMessages]
+  )
 
   const exportVoiceMessage = useCallback(async (message: Message, session: ChatSession) => {
     try {
@@ -1971,6 +2006,8 @@ function ChatPage(_props: ChatPageProps) {
                 hasImageKey={hasImageKey}
                 quoteStyle={quoteStyle}
                 selectedMessages={selectedMessages}
+                selectMode={selectMode}
+                onToggleSelect={toggleSelectMessage}
                 setContextMenu={setContextMenu}
                 showScrollToBottom={showScrollToBottom}
                 scrollToBottom={scrollToBottom}
@@ -1986,6 +2023,29 @@ function ChatPage(_props: ChatPageProps) {
                 />
               )}
             </div>
+
+            {selectMode && (
+              <div className="select-action-bar">
+                <span className="select-action-bar__count">已选 {selectedMessages.size} 条</span>
+                <div className="select-action-bar__btns">
+                  <button
+                    type="button"
+                    className="select-action-bar__btn"
+                    onClick={exitSelectMode}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    className="select-action-bar__btn select-action-bar__btn--primary"
+                    disabled={selectedMessages.size === 0}
+                    onClick={() => setShowPoster(true)}
+                  >
+                    生成海报
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -2015,7 +2075,7 @@ function ChatPage(_props: ChatPageProps) {
         setIsMenuClosing={setIsMenuClosing}
         showTopToast={showTopToast}
         setShowEnlargeView={setShowEnlargeView}
-        setSelectedMessages={setSelectedMessages}
+        onEnterSelectMode={enterSelectMode}
         exportVoiceMessage={exportVoiceMessage}
         setShowMessageInfo={setShowMessageInfo}
       />
@@ -2066,6 +2126,16 @@ function ChatPage(_props: ChatPageProps) {
         progress={batchDecryptProgress}
         imageMessages={batchImageMessages}
       />
+
+      {showPoster && currentSession && (
+        <SharePosterModal
+          session={currentSession}
+          messages={posterMessages}
+          myAvatarUrl={myAvatarUrl}
+          onClose={() => setShowPoster(false)}
+          showTopToast={showTopToast}
+        />
+      )}
     </div>
   )
 }

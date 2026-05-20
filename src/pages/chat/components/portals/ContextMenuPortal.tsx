@@ -11,7 +11,7 @@ interface ContextMenuPortalProps {
   setIsMenuClosing: React.Dispatch<React.SetStateAction<boolean>>
   showTopToast: (text: string, success?: boolean) => void
   setShowEnlargeView: React.Dispatch<React.SetStateAction<{ message: Message; content: string } | null>>
-  setSelectedMessages: React.Dispatch<React.SetStateAction<Set<number>>>
+  onEnterSelectMode: (localId: number) => void
   exportVoiceMessage: (message: Message, session: ChatSession) => void | Promise<void>
   setShowMessageInfo: React.Dispatch<React.SetStateAction<Message | null>>
 }
@@ -24,7 +24,7 @@ export function ContextMenuPortal({
   setIsMenuClosing,
   showTopToast,
   setShowEnlargeView,
-  setSelectedMessages,
+  onEnterSelectMode,
   exportVoiceMessage,
   setShowMessageInfo
 }: ContextMenuPortalProps) {
@@ -89,15 +89,7 @@ export function ContextMenuPortal({
           <div
             className="context-menu-item"
             onClick={() => {
-              setSelectedMessages(prev => {
-                const newSet = new Set(prev)
-                if (newSet.has(contextMenu.message.localId)) {
-                  newSet.delete(contextMenu.message.localId)
-                } else {
-                  newSet.add(contextMenu.message.localId)
-                }
-                return newSet
-              })
+              onEnterSelectMode(contextMenu.message.localId)
               closeContextMenu()
             }}
           >

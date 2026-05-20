@@ -404,8 +404,8 @@ export function registerAgentHandlers(ctx: MainProcessContext): void {
             mcpCallTool: async (serverName, toolName, args) => {
               if (!serverName && toolName.startsWith('ct_')) {
                 try {
-                  const { executeBuiltinTool } = await import('../../services/agentBuiltinTools')
-                  const result = await executeBuiltinTool(toolName, args as Record<string, unknown>, { readLimit: options.readLimit })
+                  const { agentToolWorkerService } = await import('../../services/agentToolWorkerService')
+                  const result = await agentToolWorkerService.run(toolName, args as Record<string, unknown>, { readLimit: options.readLimit })
                   return { success: true, result }
                 } catch (e) {
                   return { success: false, error: String(e) }
