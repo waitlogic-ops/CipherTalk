@@ -1,6 +1,7 @@
 import { Check, Monitor, Moon, Sun } from 'lucide-react'
 import { themes, useThemeStore } from '../../../stores/themeStore'
 import { useSettingsStore } from '../settingsStore'
+import Select from '../../Select'
 import { SegmentedControl } from '../ui'
 
 type ThemeMode = 'light' | 'dark' | 'system'
@@ -79,35 +80,23 @@ function AppearanceTab() {
       </div>
 
       <h3 className="section-title" style={{ marginTop: '2rem' }}>窗口关闭行为</h3>
-      <div className="quote-style-options">
-        <label className={`radio-label ${closeToTray ? 'active' : ''}`}>
-          <input
-            type="radio"
-            name="closeAction"
-            value="tray"
-            checked={closeToTray}
-            onChange={() => setField('closeToTray', true)}
-          />
-          <div className="radio-content">
-            <span className="radio-title">最小化到托盘</span>
-            <span className="radio-desc">点击关闭按钮后，应用将最小化到系统托盘继续运行</span>
-          </div>
-        </label>
-
-        <label className={`radio-label ${!closeToTray ? 'active' : ''}`}>
-          <input
-            type="radio"
-            name="closeAction"
-            value="quit"
-            checked={!closeToTray}
-            onChange={() => setField('closeToTray', false)}
-          />
-          <div className="radio-content">
-            <span className="radio-title">直接退出应用</span>
-            <span className="radio-desc">点击关闭按钮后，应用将完全退出</span>
-          </div>
-        </label>
-      </div>
+      <Select<'tray' | 'quit'>
+        style={{ maxWidth: 460 }}
+        value={closeToTray ? 'tray' : 'quit'}
+        onChange={(v) => setField('closeToTray', v === 'tray')}
+        options={[
+          {
+            value: 'tray',
+            label: '最小化到托盘',
+            description: '点击关闭按钮后，应用将最小化到系统托盘继续运行'
+          },
+          {
+            value: 'quit',
+            label: '直接退出应用',
+            description: '点击关闭按钮后，应用将完全退出'
+          }
+        ]}
+      />
     </div>
   )
 }

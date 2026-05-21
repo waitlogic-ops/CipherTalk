@@ -1222,6 +1222,7 @@
 .quote-style-options {
   display: flex;
   gap: 8px;
+  max-width: 500px;
 
   .radio-label {
     flex: 1;
@@ -1269,12 +1270,7 @@
     }
 
     input[type="radio"] {
-      width: 16px;
-      height: 16px;
-      margin: 2px 0 0;
-      flex-shrink: 0;
-      cursor: pointer;
-      accent-color: var(--primary);
+      display: none;
     }
 
     .radio-content {
@@ -1335,7 +1331,8 @@
           /* 左下角小圆角，适合左边消息 */
           padding: 10px 12px;
           width: fit-content;
-          max-width: 90%;
+          min-width: 0;
+          /* 靠 flex 收缩约束宽度，留出头像占位，避免溢出被裁切 */
           color: white;
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 
@@ -1363,6 +1360,8 @@
           display: flex;
           flex-direction: column;
           width: 100%;
+          min-width: 0;
+          /* 允许 flex 收缩，否则 nowrap 内容会撑爆卡片 */
           align-items: flex-start;
           /* 模拟接收方 */
 
