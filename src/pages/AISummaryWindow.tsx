@@ -99,6 +99,7 @@ const RESULT_TABS: Array<{ id: ResultTabId; label: string; icon: LucideIcon }> =
 ]
 
 const STREAM_FLUSH_INTERVAL_MS = 80
+const DEFAULT_AI_PROVIDER = 'deepseek'
 
 function getDefaultResultTab(summary: SummaryResult | null): ResultTabId {
   return summary?.structuredAnalysis ? 'overview' : 'markdown'
@@ -2481,9 +2482,9 @@ function AISummaryWindow() {
         sessionId,
         timeRangeDays,
         {
-          provider: provider || 'zhipu',
+          provider: provider || DEFAULT_AI_PROVIDER,
           apiKey: apiKey as string,
-          model: model || 'glm-4.5-flash',
+          model: model || '',
           detail: detail || 'normal',
           systemPromptPreset,
           customSystemPrompt,
@@ -2549,9 +2550,9 @@ function AISummaryWindow() {
       const response = await window.electronAPI.ai.buildSessionProfileMemory({
         sessionId,
         sessionName,
-        provider: provider || 'zhipu',
+        provider: provider || DEFAULT_AI_PROVIDER,
         apiKey: apiKey || '',
-        model: model || 'glm-4.5-flash'
+        model: model || ''
       })
 
       if (!response.success || !response.result) {
@@ -2642,9 +2643,9 @@ function AISummaryWindow() {
         summaryText: result?.summaryText,
         structuredAnalysis: result?.structuredAnalysis,
         history: historyForRequest,
-        provider: provider || 'zhipu',
+        provider: provider || DEFAULT_AI_PROVIDER,
         apiKey: apiKey as string,
-        model: model || 'glm-4.5-flash',
+        model: model || '',
         enableThinking: enableThinking !== false
       })
 

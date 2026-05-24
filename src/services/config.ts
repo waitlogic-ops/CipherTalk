@@ -481,7 +481,7 @@ export async function setAuthPasswordSalt(salt: string | null): Promise<void> {
 // 获取当前选中的 AI 提供商
 export async function getAiProvider(): Promise<string> {
   const value = await config.get('aiCurrentProvider')
-  return (value as string) || 'zhipu'
+  return (value as string) || 'deepseek'
 }
 
 // 设置当前选中的 AI 提供商

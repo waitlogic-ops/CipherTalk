@@ -234,7 +234,7 @@ class AIService {
    * 获取提供商实例
    */
   private getProvider(providerName?: string, apiKey?: string): AIProvider {
-    const name = providerName || this.configService.getAICurrentProvider() || 'zhipu'
+    const name = providerName || this.configService.getAICurrentProvider() || 'deepseek'
 
     // 如果没有传入 apiKey，从配置中获取当前提供商的配置
     let key = apiKey

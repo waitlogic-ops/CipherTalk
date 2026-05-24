@@ -184,7 +184,7 @@ const defaults: ConfigSchema = {
   httpApiListenMode: 'localhost',
   closeToTray: true,  // 默认最小化到托盘
   // AI 默认配置
-  aiCurrentProvider: 'zhipu',
+  aiCurrentProvider: 'deepseek',
   aiProviderConfigs: {},  // 空对象，用户配置后填充
   aiDefaultTimeRange: 7, // 默认7天
   aiSummaryDetail: 'normal',
@@ -328,6 +328,24 @@ export class ConfigService {
         }
       } catch (e) {
         console.error('迁移 AI baseURL 字段失败:', e)
+      }
+
+      // 迁移：旧版本默认 AI 厂商为智谱；未保存任何 AI 配置时切到新的默认 DeepSeek
+      try {
+        const currentProviderRow = this.db.prepare("SELECT value FROM config WHERE key = 'aiCurrentProvider'").get() as { value: string } | undefined
+        const aiConfigsRow = this.db.prepare("SELECT value FROM config WHERE key = 'aiProviderConfigs'").get() as { value: string } | undefined
+        const currentProvider = currentProviderRow ? JSON.parse(currentProviderRow.value || '""') : ''
+        const aiConfigs = aiConfigsRow ? JSON.parse(aiConfigsRow.value || '{}') : {}
+        const hasSavedAIConfig = Object.values(aiConfigs || {}).some((config: any) => (
+          Boolean(config?.apiKey || config?.model || config?.baseURL || config?.baseUrl)
+        ))
+
+        if (currentProvider === 'zhipu' && !hasSavedAIConfig) {
+          this.db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run('aiCurrentProvider', JSON.stringify('deepseek'))
+          console.log('[Config] 默认 AI 提供商已切换为 DeepSeek')
+        }
+      } catch (e) {
+        console.error('迁移默认 AI 提供商失败:', e)
       }
     } catch (e) {
       console.error('初始化配置数据库失败:', e)

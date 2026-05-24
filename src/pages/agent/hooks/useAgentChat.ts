@@ -16,7 +16,7 @@ function recordToMessage(r: AgentMessageRecord): Message {
 }
 
 async function getProviderSettings(): Promise<{ provider: string; apiKey: string; model: string; enableThinking: boolean; temperature: number }> {
-  const defaults = { provider: 'zhipu', apiKey: '', model: '', enableThinking: true, temperature: 0.7 }
+  const defaults = { provider: 'deepseek', apiKey: '', model: '', enableThinking: true, temperature: 0.7 }
   try {
     const api = window.electronAPI
     if (!api?.config) return defaults

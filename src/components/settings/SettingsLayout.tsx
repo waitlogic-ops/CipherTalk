@@ -177,7 +177,7 @@ function SettingsLayout() {
   const [autoUpdateDebounceTime, setAutoUpdateDebounceTime] = useState(500)  // 防抖时间（毫秒）
 
   // AI 相关配置状态
-  const [aiProvider, setAiProviderState] = useState('zhipu')
+  const [aiProvider, setAiProviderState] = useState('deepseek')
   const [aiApiKey, setAiApiKeyState] = useState('')
   const [aiModel, setAiModelState] = useState('')
   const [aiDefaultTimeRange, setAiDefaultTimeRangeState] = useState<number>(7)
