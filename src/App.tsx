@@ -607,7 +607,7 @@ function App() {
 
   // 主窗口 - 完整布局
   const disableContentOverflow = ['/data-management', '/settings'].includes(location.pathname)
-  const fullPageRoutes = ['/agent']
+  const fullPageRoutes = ['/agent', '/home']
   const isFullPage = fullPageRoutes.includes(location.pathname)
 
   return (

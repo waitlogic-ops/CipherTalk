@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { User, Smile, MessageSquareQuote, RefreshCw } from 'lucide-react'
+import { BackgroundPathsBackdrop } from '@/components/ui/background-paths'
 import { useAppStore } from '../stores/appStore'
 import WhatsNewModal from '../components/WhatsNewModal'
 import { RandomMomentBubble } from '../features/home/RandomMomentBubble'
@@ -104,6 +105,7 @@ function HomePage() {
 
   return (
     <div className="home-page">
+      <BackgroundPathsBackdrop className="home-background-paths" />
       <button className="whats-new-btn" onClick={() => setShowWhatsNew(true)}>
         <Smile size={18} />
       </button>

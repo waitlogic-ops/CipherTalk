@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import { resolve } from 'path'
@@ -23,6 +24,7 @@ export default defineConfig({
     strictPort: false  // 如果默认端口被占用，自动尝试下一个
   },
   plugins: [
+    tailwindcss(),
     react(),
     electron([
       {
