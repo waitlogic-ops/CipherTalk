@@ -26,6 +26,7 @@ interface Props {
   busyServers: Set<string>
   onToggleServer: (name: string, status: McpServerStatus) => void
   skills: AgentSkill[]
+  allowSessionAttachments?: boolean
 }
 
 const READ_LIMIT_OPTIONS = [500, 1000, 1500, 2000] as const
@@ -75,6 +76,7 @@ export function ChatInput({
   scope,
   onSend, disabled, suggestions, slashCommands,
   mcpServers, busyServers, onToggleServer, skills,
+  allowSessionAttachments = false,
 }: Props) {
   const [value, setValue] = useState('')
   const [showSlash, setShowSlash] = useState(false)
@@ -93,7 +95,7 @@ export function ChatInput({
   const mentionSearchRef = useRef<HTMLInputElement>(null)
   const mentionLoadingRef = useRef(false)
   const mentionLoadedRef = useRef(false)
-  const canAttachSessions = scope.kind === 'global'
+  const canAttachSessions = scope.kind === 'global' || allowSessionAttachments
 
   // 一次性拉取所有会话（最多 1000 条），后续纯客户端过滤
   const loadMentionSessions = useCallback(async () => {
@@ -205,6 +207,11 @@ export function ChatInput({
 
   const connectedCount = mcpServers.filter(s => s.status === 'connected').length
   const skillEnabledCount = enabledSkills.size
+  const placeholder = canAttachSessions
+    ? (scope.kind === 'global'
+        ? '给 Agent 安排一个任务... 按 @ 引用，按 / 输入命令'
+        : '询问当前会话... 按 @ 添加会话范围，按 / 输入命令')
+    : '询问当前会话... 按 / 输入命令'
 
   return (
     <footer className="agent-composer-wrap">
@@ -247,7 +254,7 @@ export function ChatInput({
           value={value}
           disabled={disabled}
           className="agent-composer__textarea"
-          placeholder={canAttachSessions ? '给 Agent 安排一个任务... 按 @ 引用，按 / 输入命令' : '询问当前会话... 按 / 输入命令'}
+          placeholder={placeholder}
           onChange={event => {
             const text = event.target.value
             setValue(text)

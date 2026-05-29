@@ -42,6 +42,10 @@ function createRequestId(): string {
   return `aiagent-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+function hasScopedSessions(request: ConversationRequest): boolean {
+  return (request.scopedSessions || []).some(session => String(session.id || '').trim())
+}
+
 class AIAgentJobService {
   private jobs = new Map<string, AIAgentJob>()
   private vectorWarmupJobs = new Map<string, Worker>()
@@ -77,7 +81,7 @@ class AIAgentJobService {
     }
     this.jobs.set(requestId, job)
 
-    if (normalizedRequest.scope.kind === 'session') {
+    if (normalizedRequest.scope.kind === 'session' && !hasScopedSessions(normalizedRequest)) {
       const workerPath = this.findElectronWorkerPath('sessionQaWorker.js')
       if (!workerPath) {
         this.jobs.delete(requestId)

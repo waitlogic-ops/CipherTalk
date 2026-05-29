@@ -360,8 +360,25 @@ function createAgentRequestId(): string {
   return `aiagent-ui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+type ScopedSessionRef = { id: string; name: string }
 
-export function useAiAgentChat(scope: AiAgentScope) {
+interface UseAiAgentChatOptions {
+  baseScopedSessions?: ScopedSessionRef[]
+}
+
+function mergeScopedSessions(...groups: ScopedSessionRef[][]): ScopedSessionRef[] {
+  const sessions = new Map<string, ScopedSessionRef>()
+  for (const group of groups) {
+    for (const session of group) {
+      const id = String(session.id || '').trim()
+      if (!id) continue
+      sessions.set(id, { id, name: session.name || id })
+    }
+  }
+  return [...sessions.values()]
+}
+
+export function useAiAgentChat(scope: AiAgentScope, options: UseAiAgentChatOptions = {}) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [conversationId, setConversationId] = useState<number | null>(null)
@@ -663,9 +680,13 @@ export function useAiAgentChat(scope: AiAgentScope) {
     const history = buildHistory(messages)
     const providerSettings = await getProviderSettings()
 
-    const scopedSessions = (attached || [])
+    const attachedSessions = (attached || [])
       .filter(r => r.icon === 'database')
       .map(r => ({ id: r.id, name: r.label }))
+    const scopedSessions = mergeScopedSessions(
+      scope.kind === 'session' && attachedSessions.length > 0 ? (options.baseScopedSessions || []) : [],
+      attachedSessions
+    )
 
     const result = await agentApi.send({
       requestId,
@@ -733,9 +754,13 @@ export function useAiAgentChat(scope: AiAgentScope) {
     setLoading(true)
 
     const providerSettings = await getProviderSettings()
-    const scopedSessions = (attached || [])
+    const attachedSessions = (attached || [])
       .filter(r => r.icon === 'database')
       .map(r => ({ id: r.id, name: r.label }))
+    const scopedSessions = mergeScopedSessions(
+      scope.kind === 'session' && attachedSessions.length > 0 ? (options.baseScopedSessions || []) : [],
+      attachedSessions
+    )
 
     const result = await agentApi.send({
       requestId,

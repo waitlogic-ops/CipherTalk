@@ -25,14 +25,14 @@ function emitProgress(onProgress: ProgressEmit, event: unknown): void {
   onProgress(event as ProgressEvent)
 }
 
-function getSingleScopedSession(request: ConversationRequest): ScopedSession | null {
+function getScopedSessions(request: ConversationRequest): ScopedSession[] {
   const sessions = new Map<string, ScopedSession>()
   for (const session of request.scopedSessions || []) {
     const id = String(session.id || '').trim()
     if (!id) continue
     sessions.set(id, { id, name: session.name || id })
   }
-  return sessions.size === 1 ? [...sessions.values()][0] : null
+  return [...sessions.values()]
 }
 
 function buildScopedQuestion(request: ConversationRequest): string {
@@ -48,32 +48,9 @@ export async function run(
 ): Promise<RunConversationResult> {
   const scope = resolveScope(request.scope)
   assertNotAborted(signal)
+  const scopedSessions = getScopedSessions(request)
 
-  if (scope.kind === 'session') {
-    const result = await aiService.answerSessionQuestion(
-      {
-        conversationId: request.conversationId,
-        sessionId: scope.sessionId,
-        sessionName: scope.sessionName,
-        question: request.message,
-        history: request.history,
-        provider: request.provider.provider,
-        apiKey: request.provider.apiKey,
-        model: request.provider.model,
-        enableThinking: request.forceThinking ?? request.provider.enableThinking,
-        signal,
-      },
-      event => emitStream(emit, event),
-      event => emitProgress(onProgress, event)
-    )
-
-    return {
-      conversationId: request.conversationId ?? 0,
-      answerText: result.answerText
-    }
-  }
-
-  const scopedSession = getSingleScopedSession(request)
+  const scopedSession = scopedSessions.length === 1 ? scopedSessions[0] : null
   if (scopedSession) {
     emitProgress(onProgress, {
       id: 'global-scope-resolved',
@@ -92,6 +69,53 @@ export async function run(
         sessionId: scopedSession.id,
         sessionName: scopedSession.name,
         question: buildScopedQuestion(request),
+        history: request.history,
+        provider: request.provider.provider,
+        apiKey: request.provider.apiKey,
+        model: request.provider.model,
+        enableThinking: request.forceThinking ?? request.provider.enableThinking,
+        signal,
+      },
+      event => emitStream(emit, event),
+      event => emitProgress(onProgress, event)
+    )
+
+    return {
+      conversationId: request.conversationId ?? 0,
+      answerText: result.answerText
+    }
+  }
+
+  if (scope.kind === 'session' && scopedSessions.length > 1) {
+    emitProgress(onProgress, {
+      id: 'session-extra-scope-resolved',
+      stage: 'intent',
+      status: 'completed',
+      title: '识别多会话范围',
+      detail: `已包含 ${scopedSessions.length} 个会话范围，切换到全局 Agent`,
+      requestId: request.requestId,
+      createdAt: Date.now(),
+      source: 'chat'
+    })
+
+    const answerText = await runGlobalConversation(
+      { ...request, scope: { kind: 'global' }, scopedSessions },
+      emit,
+      signal
+    )
+    return {
+      conversationId: request.conversationId ?? 0,
+      answerText
+    }
+  }
+
+  if (scope.kind === 'session') {
+    const result = await aiService.answerSessionQuestion(
+      {
+        conversationId: request.conversationId,
+        sessionId: scope.sessionId,
+        sessionName: scope.sessionName,
+        question: request.message,
         history: request.history,
         provider: request.provider.provider,
         apiKey: request.provider.apiKey,

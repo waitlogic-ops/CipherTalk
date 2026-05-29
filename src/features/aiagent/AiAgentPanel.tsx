@@ -55,14 +55,21 @@ function groupConversations(convs: AiAgentConversationSummary[]): ConversationGr
 interface Props {
   scope: Scope
   layout: 'full' | 'embedded'
+  allowSessionAttachments?: boolean
+  baseScopedSessions?: Array<{ id: string; name: string }>
 }
 
-export function AiAgentPanel({ scope, layout }: Props) {
+export function AiAgentPanel({
+  scope,
+  layout,
+  allowSessionAttachments = false,
+  baseScopedSessions = [],
+}: Props) {
   const {
     messages, loading, conversationId, conversations,
     send, cancel, reset, regenerate,
     selectConversation, deleteConversation, renameConversation,
-  } = useAiAgentChat(scope)
+  } = useAiAgentChat(scope, { baseScopedSessions })
   const { mcpServers, skills, busyServers, toggleServer } = useMcpSkillsData()
   const [collapsed, setCollapsed] = useState(layout === 'embedded')
   const [query, setQuery] = useState('')
@@ -109,6 +116,7 @@ export function AiAgentPanel({ scope, layout }: Props) {
           busyServers={busyServers}
           onToggleServer={toggleServer}
           skills={skills}
+          allowSessionAttachments={allowSessionAttachments}
         />
       </main>
     </div>
