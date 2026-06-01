@@ -21,7 +21,7 @@ export const globalVoiceManager = {
 }
 
 export const emojiDataUrlCache = new LRUCache<string, string>(200)
-export const imageDataUrlCache = new LRUCache<string, string>(50)
+export const imageDataUrlCache = new LRUCache<string, string>(200)
 
 const imageDecryptQueue: Array<() => Promise<void>> = []
 let isProcessingQueue = false
