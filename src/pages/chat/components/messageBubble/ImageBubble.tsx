@@ -483,6 +483,7 @@ function ImageBubble({ message, session, hasImageKey, onContextMenu }: ImageBubb
           alt="图片"
           className="image-message"
           style={{ width: '100%', height: '100%' }}
+          decoding="async"
           onClick={() => { void handleOpenImage() }}
           onLoad={() => setImageError(false)}
           onError={() => {

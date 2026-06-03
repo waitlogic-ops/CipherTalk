@@ -136,6 +136,7 @@ function TextBubble({ message, session, isSent, onContextMenu }: TextBubbleProps
         src={emojiLocalPath}
         alt="表情"
         className="emoji-image"
+        decoding="async"
         onError={() => setEmojiError(true)}
         onContextMenu={onContextMenu ? (e) => onContextMenu(e, message) : undefined}
       />
