@@ -92,7 +92,7 @@ export default defineConfig(async () => {
           }
         },
         {
-          entry: 'electron/wcdbWorker.ts',
+          entry: 'electron/wcdbUtilityProcess.ts',
           vite: {
             build: {
               outDir: 'dist-electron',

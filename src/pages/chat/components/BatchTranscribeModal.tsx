@@ -1,5 +1,5 @@
-import { createPortal } from 'react-dom'
 import { AlertCircle, CheckCircle, Loader2, Mic, XCircle } from 'lucide-react'
+import { Button, Checkbox, Label, Modal, ProgressBar } from '@heroui/react'
 import type { Message } from '../../../types/models'
 import { formatBatchDateLabel } from '../utils/time'
 
@@ -44,140 +44,135 @@ export function BatchTranscribeModal({
 }: BatchTranscribeModalProps) {
   return (
     <>
-      {showConfirm && createPortal(
-        <div className="modal-overlay" onClick={onCloseConfirm}>
-          <div className="modal-content batch-confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <Mic size={20} />
-              <h3>批量语音转文字</h3>
-            </div>
-            <div className="modal-body">
-              <p>选择要转写的日期（仅显示有语音的日期），然后开始转写。</p>
+      <Modal.Backdrop isOpen={showConfirm} onOpenChange={(open) => { if (!open) onCloseConfirm() }}>
+        <Modal.Container>
+          <Modal.Dialog className="sm:max-w-110">
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Icon className="bg-default text-foreground">
+                <Mic className="size-5" />
+              </Modal.Icon>
+              <Modal.Heading>批量语音转文字</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <p className="text-sm text-muted">选择要转写的日期（仅显示有语音的日期），然后开始转写。</p>
+
               {voiceDates.length > 0 && (
-                <div className="batch-dates-list-wrap">
-                  <div className="batch-dates-actions">
-                    <button type="button" className="batch-dates-btn" onClick={onSelectAllDates}>全选</button>
-                    <button type="button" className="batch-dates-btn" onClick={onClearAllDates}>取消全选</button>
+                <div className="mt-3 flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="tertiary" onPress={onSelectAllDates}>全选</Button>
+                    <Button size="sm" variant="tertiary" onPress={onClearAllDates}>取消全选</Button>
                   </div>
-                  <ul className="batch-dates-list">
+                  <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
                     {voiceDates.map(dateStr => {
                       const count = countByDate.get(dateStr) ?? 0
                       const checked = selectedDates.has(dateStr)
                       return (
                         <li key={dateStr}>
-                          <label className="batch-date-row">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => onToggleDate(dateStr)}
-                            />
-                            <span className="batch-date-label">{formatBatchDateLabel(dateStr)}</span>
-                            <span className="batch-date-count">{count} 条语音</span>
-                          </label>
+                          <Checkbox
+                            className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-surface"
+                            isSelected={checked}
+                            onChange={() => onToggleDate(dateStr)}
+                          >
+                            <Checkbox.Control><Checkbox.Indicator /></Checkbox.Control>
+                            <Checkbox.Content className="flex flex-1 items-center justify-between">
+                              <Label>{formatBatchDateLabel(dateStr)}</Label>
+                              <span className="text-xs text-muted">{count} 条语音</span>
+                            </Checkbox.Content>
+                          </Checkbox>
                         </li>
                       )
                     })}
                   </ul>
                 </div>
               )}
-              <div className="batch-info">
-                <div className="info-item">
-                  <span className="label">已选:</span>
-                  <span className="value">{selectedDates.size} 天有语音，共 {selectedMessageCount} 条语音</span>
+
+              <div className="mt-3 flex flex-col gap-1 text-sm">
+                <div>
+                  <span className="text-muted">已选：</span>
+                  <span className="font-medium">{selectedDates.size} 天有语音，共 {selectedMessageCount} 条语音</span>
                 </div>
-                <div className="info-item">
-                  <span className="label">预计耗时:</span>
-                  <span className="value">约 {Math.ceil(selectedMessageCount * 2 / 60)} 分钟</span>
+                <div>
+                  <span className="text-muted">预计耗时：</span>
+                  <span className="font-medium">约 {Math.ceil(selectedMessageCount * 2 / 60)} 分钟</span>
                 </div>
               </div>
-              <div className="batch-warning">
-                <AlertCircle size={16} />
+
+              <div className="mt-3 flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-soft-foreground">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 <span>批量转写可能需要较长时间，转写过程中可以继续使用其他功能。已转写过的语音会自动跳过。</span>
               </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={onCloseConfirm}>
-                取消
-              </button>
-              <button className="btn-primary batch-transcribe-btn" onClick={onConfirm}>
-                <Mic size={16} />
+            </Modal.Body>
+            <Modal.Footer>
+              <Button slot="close" variant="secondary">取消</Button>
+              <Button onPress={onConfirm}>
+                <Mic className="size-4" />
                 开始转写
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
 
-      {showProgress && createPortal(
-        <div className="modal-overlay">
-          <div className="modal-content batch-progress-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <Loader2 size={20} className="spin" />
-              <h3>正在转写...</h3>
-            </div>
-            <div className="modal-body">
-              <div className="progress-info">
-                <div className="progress-text">
-                  <span>已完成 {progress.current} / {progress.total} 条</span>
-                  <span className="progress-percent">
-                    {progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0}%
-                  </span>
-                </div>
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
-                  />
-                </div>
-              </div>
-              <div className="batch-tip">
-                <span>转写过程中可以继续使用其他功能</span>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      <Modal.Backdrop isOpen={showProgress} isDismissable={false}>
+        <Modal.Container>
+          <Modal.Dialog className="sm:max-w-90">
+            <Modal.Header>
+              <Modal.Icon className="bg-default text-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </Modal.Icon>
+              <Modal.Heading>正在转写...</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <ProgressBar aria-label="转写进度" value={progress.current} maxValue={Math.max(1, progress.total)}>
+                <Label>已完成 {progress.current} / {progress.total} 条</Label>
+                <ProgressBar.Output />
+                <ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track>
+              </ProgressBar>
+              <p className="mt-2 text-xs text-muted">转写过程中可以继续使用其他功能</p>
+            </Modal.Body>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
 
-      {showResult && createPortal(
-        <div className="modal-overlay" onClick={onCloseResult}>
-          <div className="modal-content batch-result-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <CheckCircle size={20} />
-              <h3>转写完成</h3>
-            </div>
-            <div className="modal-body">
-              <div className="result-summary">
-                <div className="result-item success">
-                  <CheckCircle size={18} />
-                  <span className="label">成功:</span>
-                  <span className="value">{result.success} 条</span>
+      <Modal.Backdrop isOpen={showResult} onOpenChange={(open) => { if (!open) onCloseResult() }}>
+        <Modal.Container>
+          <Modal.Dialog className="sm:max-w-90">
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Icon className="bg-success-soft text-success-soft-foreground">
+                <CheckCircle className="size-5" />
+              </Modal.Icon>
+              <Modal.Heading>转写完成</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <div className="flex flex-col gap-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={18} className="text-success" />
+                  <span className="text-muted">成功：</span>
+                  <span className="font-medium">{result.success} 条</span>
                 </div>
                 {result.fail > 0 && (
-                  <div className="result-item fail">
-                    <XCircle size={18} />
-                    <span className="label">失败:</span>
-                    <span className="value">{result.fail} 条</span>
+                  <div className="flex items-center gap-2">
+                    <XCircle size={18} className="text-danger" />
+                    <span className="text-muted">失败：</span>
+                    <span className="font-medium">{result.fail} 条</span>
                   </div>
                 )}
               </div>
               {result.fail > 0 && (
-                <div className="result-tip">
-                  <AlertCircle size={16} />
+                <div className="mt-3 flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-soft-foreground">
+                  <AlertCircle size={16} className="mt-0.5 shrink-0" />
                   <span>部分语音转写失败，可能是语音文件损坏或网络问题</span>
                 </div>
               )}
-            </div>
-            <div className="modal-footer">
-              <button className="btn-primary" onClick={onCloseResult}>
-                确定
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+            </Modal.Body>
+            <Modal.Footer>
+              <Button slot="close">确定</Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </>
   )
 }

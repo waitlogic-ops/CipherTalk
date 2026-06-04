@@ -283,7 +283,13 @@ export async function getNewMessages(state: ChatServiceState,
   const normalizedLimit = Math.max(1, Math.min(2000, Math.floor(Number(limit) || 1000)))
 
   try {
-    const nativeResult = await wcdbService.getNewMessages(sessionId, normalizedMinTime, normalizedLimit)
+    let nativeResult: { success: boolean; rows?: any[]; error?: string }
+    try {
+      nativeResult = await wcdbService.getNewMessages(sessionId, normalizedMinTime, normalizedLimit)
+    } catch (e: any) {
+      nativeResult = { success: false, error: e?.message || String(e) }
+    }
+
     if (nativeResult.success) {
       let messages = (nativeResult.rows || [])
         .map(row => rowToMessage(state, row))

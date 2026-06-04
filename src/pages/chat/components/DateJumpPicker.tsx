@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Calendar as CalendarIcon, Loader2 } from 'lucide-react'
-import { Calendar, Popover } from '@heroui/react'
+import { Button, Calendar, Popover } from '@heroui/react'
 import { getLocalTimeZone, parseDate, today, type DateValue } from '@internationalized/date'
 
 interface DateJumpPickerProps {
@@ -40,15 +40,10 @@ export function DateJumpPicker({ value, onChange, onJump, disabled, loading }: D
 
   return (
     <Popover isOpen={isOpen && !disabled} onOpenChange={(open) => { if (!disabled) setIsOpen(open) }}>
-      <Popover.Trigger aria-label="跳转到日期">
-        <button
-          type="button"
-          className="icon-btn date-jump-btn"
-          disabled={disabled}
-          data-tooltip="跳转到日期"
-        >
-          {loading ? <Loader2 size={18} className="spin" /> : <CalendarIcon size={18} />}
-        </button>
+      <Popover.Trigger>
+        <Button isIconOnly size="sm" variant="ghost" isDisabled={disabled} aria-label="跳转到日期">
+          {loading ? <Loader2 size={18} className="animate-spin" /> : <CalendarIcon size={18} />}
+        </Button>
       </Popover.Trigger>
       <Popover.Content placement="bottom right">
         <Popover.Dialog>

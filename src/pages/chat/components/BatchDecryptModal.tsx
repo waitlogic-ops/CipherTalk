@@ -1,5 +1,5 @@
-import { createPortal } from 'react-dom'
 import { AlertCircle, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { Button, Checkbox, Label, Modal, ProgressBar } from '@heroui/react'
 import type { BatchImageMessage } from '../types'
 import { formatBatchDateLabel } from '../utils/time'
 
@@ -37,94 +37,89 @@ export function BatchDecryptModal({
 }: BatchDecryptModalProps) {
   return (
     <>
-      {showConfirm && createPortal(
-        <div className="modal-overlay" onClick={onCloseConfirm}>
-          <div className="modal-content batch-confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <ImageIcon size={20} />
-              <h3>批量解密图片</h3>
-            </div>
-            <div className="modal-body">
-              <p>选择要解密的日期（仅显示有图片的日期），然后开始解密。</p>
+      <Modal.Backdrop isOpen={showConfirm} onOpenChange={(open) => { if (!open) onCloseConfirm() }}>
+        <Modal.Container>
+          <Modal.Dialog className="sm:max-w-110">
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Icon className="bg-default text-foreground">
+                <ImageIcon className="size-5" />
+              </Modal.Icon>
+              <Modal.Heading>批量解密图片</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <p className="text-sm text-muted">选择要解密的日期（仅显示有图片的日期），然后开始解密。</p>
+
               {imageDates.length > 0 && (
-                <div className="batch-dates-list-wrap">
-                  <div className="batch-dates-actions">
-                    <button type="button" className="batch-dates-btn" onClick={onSelectAllDates}>全选</button>
-                    <button type="button" className="batch-dates-btn" onClick={onClearAllDates}>取消全选</button>
+                <div className="mt-3 flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="tertiary" onPress={onSelectAllDates}>全选</Button>
+                    <Button size="sm" variant="tertiary" onPress={onClearAllDates}>取消全选</Button>
                   </div>
-                  <ul className="batch-dates-list">
+                  <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
                     {imageDates.map(dateStr => {
                       const count = countByDate.get(dateStr) ?? 0
                       const checked = selectedDates.has(dateStr)
                       return (
                         <li key={dateStr}>
-                          <label className="batch-date-row">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => onToggleDate(dateStr)}
-                            />
-                            <span className="batch-date-label">{formatBatchDateLabel(dateStr)}</span>
-                            <span className="batch-date-count">{count} 张图片</span>
-                          </label>
+                          <Checkbox
+                            className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-surface"
+                            isSelected={checked}
+                            onChange={() => onToggleDate(dateStr)}
+                          >
+                            <Checkbox.Control><Checkbox.Indicator /></Checkbox.Control>
+                            <Checkbox.Content className="flex flex-1 items-center justify-between">
+                              <Label>{formatBatchDateLabel(dateStr)}</Label>
+                              <span className="text-xs text-muted">{count} 张图片</span>
+                            </Checkbox.Content>
+                          </Checkbox>
                         </li>
                       )
                     })}
                   </ul>
                 </div>
               )}
-              <div className="batch-info">
-                <div className="info-item">
-                  <span className="label">已选:</span>
-                  <span className="value">{selectedDates.size} 天有图片，共 {selectedCount} 张图片</span>
-                </div>
+
+              <div className="mt-3 text-sm">
+                <span className="text-muted">已选：</span>
+                <span className="font-medium">{selectedDates.size} 天有图片，共 {selectedCount} 张图片</span>
               </div>
-              <div className="batch-warning">
-                <AlertCircle size={16} />
+
+              <div className="mt-3 flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-soft-foreground">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 <span>批量解密可能需要较长时间，解密过程中可以继续使用其他功能。已解密过的图片会自动跳过。</span>
               </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={onCloseConfirm}>
-                取消
-              </button>
-              <button className="btn-primary" onClick={onConfirm}>
-                <ImageIcon size={16} />
+            </Modal.Body>
+            <Modal.Footer>
+              <Button slot="close" variant="secondary">取消</Button>
+              <Button onPress={onConfirm}>
+                <ImageIcon className="size-4" />
                 开始解密
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
 
-      {showProgress && createPortal(
-        <div className="modal-overlay">
-          <div className="modal-content batch-progress-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <Loader2 size={20} className="spin" />
-              <h3>正在解密图片...</h3>
-            </div>
-            <div className="modal-body">
-              <div className="progress-info">
-                <div className="progress-text">
-                  <span>已完成 {progress.current} / {progress.total} 张</span>
-                  <span className="progress-percent">
-                    {progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0}%
-                  </span>
-                </div>
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      <Modal.Backdrop isOpen={showProgress} isDismissable={false}>
+        <Modal.Container>
+          <Modal.Dialog className="sm:max-w-90">
+            <Modal.Header>
+              <Modal.Icon className="bg-default text-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </Modal.Icon>
+              <Modal.Heading>正在解密图片...</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <ProgressBar aria-label="解密进度" value={progress.current} maxValue={Math.max(1, progress.total)}>
+                <Label>已完成 {progress.current} / {progress.total} 张</Label>
+                <ProgressBar.Output />
+                <ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track>
+              </ProgressBar>
+            </Modal.Body>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </>
   )
 }

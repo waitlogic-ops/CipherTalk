@@ -1,4 +1,5 @@
 import { Aperture, Image as ImageIcon, Loader2, Mic, RefreshCw } from 'lucide-react'
+import { Button, Tooltip } from '@heroui/react'
 import { DateJumpPicker } from './DateJumpPicker'
 import type { ChatSession } from '../../../types/models'
 import { isGroupChat } from '../utils/messageGuards'
@@ -63,23 +64,39 @@ export function ChatHeader({
         )}
       </div>
       <div className="header-actions">
-        <button
-          className="icon-btn refresh-messages-btn"
-          onClick={onRefreshMessages}
-          disabled={isRefreshingMessages || isLoadingMessages}
-          data-tooltip="刷新消息"
-        >
-          <RefreshCw size={18} className={isRefreshingMessages || isUpdating ? 'spin' : ''} />
-        </button>
+        <Tooltip delay={0}>
+          <Tooltip.Trigger>
+            <Button
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              aria-label="刷新消息"
+              onPress={onRefreshMessages}
+              isDisabled={isRefreshingMessages || isLoadingMessages}
+            >
+              <RefreshCw size={18} className={isRefreshingMessages || isUpdating ? 'animate-spin' : ''} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>刷新消息</Tooltip.Content>
+        </Tooltip>
+
         {!isGroupChat(currentSession.username) && (
-          <button
-            className="icon-btn moments-btn"
-            onClick={() => window.electronAPI.window.openMomentsWindow(currentSession.username)}
-            data-tooltip="查看朋友圈"
-          >
-            <Aperture size={18} />
-          </button>
+          <Tooltip delay={0}>
+            <Tooltip.Trigger>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                aria-label="查看朋友圈"
+                onPress={() => window.electronAPI.window.openMomentsWindow(currentSession.username)}
+              >
+                <Aperture size={18} />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content>查看朋友圈</Tooltip.Content>
+          </Tooltip>
         )}
+
         <DateJumpPicker
           value={selectedDate}
           onChange={onSelectedDateChange}
@@ -87,32 +104,42 @@ export function ChatHeader({
           disabled={!currentSessionId || isJumpingToDate}
           loading={isJumpingToDate}
         />
-        <button
-          className="icon-btn batch-transcribe-btn"
-          style={{ position: 'relative', zIndex: 10 }}
-          onClick={onBatchTranscribe}
-          disabled={isBatchTranscribing || !currentSessionId}
-          data-tooltip={isBatchTranscribing ? `批量转写中 (${batchTranscribeProgress.current}/${batchTranscribeProgress.total})` : '批量语音转文字'}
-        >
-          {isBatchTranscribing ? (
-            <Loader2 size={18} className="spin" />
-          ) : (
-            <Mic size={18} />
-          )}
-        </button>
-        <button
-          className="icon-btn batch-decrypt-btn"
-          style={{ position: 'relative', zIndex: 10 }}
-          onClick={onBatchDecrypt}
-          disabled={isBatchDecrypting || !currentSessionId}
-          data-tooltip={isBatchDecrypting ? `批量解密中 (${batchDecryptProgress.current}/${batchDecryptProgress.total})` : '批量解密图片'}
-        >
-          {isBatchDecrypting ? (
-            <Loader2 size={18} className="spin" />
-          ) : (
-            <ImageIcon size={18} />
-          )}
-        </button>
+
+        <Tooltip delay={0}>
+          <Tooltip.Trigger>
+            <Button
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              aria-label="批量语音转文字"
+              onPress={onBatchTranscribe}
+              isDisabled={isBatchTranscribing || !currentSessionId}
+            >
+              {isBatchTranscribing ? <Loader2 size={18} className="animate-spin" /> : <Mic size={18} />}
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            {isBatchTranscribing ? `批量转写中 (${batchTranscribeProgress.current}/${batchTranscribeProgress.total})` : '批量语音转文字'}
+          </Tooltip.Content>
+        </Tooltip>
+
+        <Tooltip delay={0}>
+          <Tooltip.Trigger>
+            <Button
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              aria-label="批量解密图片"
+              onPress={onBatchDecrypt}
+              isDisabled={isBatchDecrypting || !currentSessionId}
+            >
+              {isBatchDecrypting ? <Loader2 size={18} className="animate-spin" /> : <ImageIcon size={18} />}
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            {isBatchDecrypting ? `批量解密中 (${batchDecryptProgress.current}/${batchDecryptProgress.total})` : '批量解密图片'}
+          </Tooltip.Content>
+        </Tooltip>
       </div>
     </div>
   )

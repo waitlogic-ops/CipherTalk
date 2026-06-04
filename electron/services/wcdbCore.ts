@@ -1,9 +1,13 @@
 import { basename, delimiter, dirname, join } from 'path'
 import { existsSync, readdirSync, statSync } from 'fs'
 
+// 稳定性开关：native 消息游标保留原生速度。若 koffi/native 触发 fatal，
+// 现在只会终止 Electron utilityProcess，主进程会重启子进程并让本次请求回退 SQL。
+const NATIVE_MESSAGE_CURSOR_ENABLED = true
+
 /**
  * WcdbCore —— 直连微信加密数据库的底层封装。
- * - 不依赖 Electron `app`，可在 worker_threads 中实例化
+ * - 不依赖 Electron `app`，可在 utilityProcess 中实例化
  * - 所有资源路径通过 setPaths() 注入
  * - C 符号按需探测，未绑定的新符号不会导致初始化失败（特性可降级）
  */
@@ -500,6 +504,9 @@ export class WcdbCore {
     beginTimestamp: number,
     endTimestamp: number
   ): Promise<{ success: boolean; cursor?: number; error?: string }> {
+    if (!NATIVE_MESSAGE_CURSOR_ENABLED) {
+      return { success: false, error: 'native 消息游标已禁用（稳定性），回退 SQL' }
+    }
     if (!this.initialized || this.handle === null) {
       return { success: false, error: 'WCDB 未初始化' }
     }
@@ -534,6 +541,9 @@ export class WcdbCore {
     beginTimestamp: number,
     endTimestamp: number
   ): Promise<{ success: boolean; cursor?: number; error?: string }> {
+    if (!NATIVE_MESSAGE_CURSOR_ENABLED) {
+      return { success: false, error: 'native 消息游标已禁用（稳定性），回退 SQL' }
+    }
     if (!this.wcdbOpenMessageCursorLite) {
       return this.openMessageCursor(sessionId, batchSize, ascending, beginTimestamp, endTimestamp)
     }

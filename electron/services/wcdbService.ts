@@ -1,18 +1,18 @@
 /**
- * WcdbService —— WcdbCore 的 Worker 代理层。
+ * WcdbService —— WcdbCore 的 utilityProcess 代理层。
  * 业务层（chatService / snsService / dbAdapter）调用签名保持不变，事件 'change' 来自 native 管道。
- * Worker 崩溃会 reject 所有 pending 并在 2 秒后自动重启。
- * TODO(tl): 已在 vite.config.ts 声明 wcdbWorker 入口；若变更打包布局请同步 resolveWorkerPath()。
+ * native/koffi fatal 只会终止 WCDB utility process；主进程会 reject pending 并自动重启。
  */
+import { utilityProcess } from 'electron'
+import type { UtilityProcess } from 'electron'
 import { EventEmitter } from 'events'
 import { existsSync } from 'fs'
 import { join } from 'path'
-import { Worker } from 'worker_threads'
 import { ConfigService } from './config'
 import { getAppPath, getUserDataPath, isElectronPackaged } from './runtimePaths'
 
-type WorkerRequest = { id: number; type: string; payload?: any }
-type WorkerResponse = { id: number; result?: any; error?: string; type?: string; payload?: any }
+type UtilityRequest = { id: number; type: string; payload?: any }
+type UtilityResponse = { id: number; result?: any; error?: string; type?: string; payload?: any }
 type Pending = { resolve: (value: any) => void; reject: (reason: any) => void }
 type OpenPayload = { dbPath: string; hexKey: string; wxid: string }
 
@@ -70,11 +70,11 @@ function inlineParams(sql: string, params: any[]): string {
   return out
 }
 
-const WORKER_FILE = 'wcdbWorker.js'
+const UTILITY_FILE = 'wcdbUtilityProcess.js'
 const RESTART_DELAY_MS = 2000
 
 export class WcdbService extends EventEmitter {
-  private worker: Worker | null = null
+  private worker: UtilityProcess | null = null
   private pending = new Map<number, Pending>()
   private seq = 0
   private initPromise: Promise<void> | null = null
@@ -82,6 +82,7 @@ export class WcdbService extends EventEmitter {
   private lastOpenPayload: OpenPayload | null = null
   private restartTimer: NodeJS.Timeout | null = null
   private shuttingDown = false
+  private monitorRequested = false
 
   // ========= 公共 API（保持与旧实现一致） =========
   async testConnection(dbPath: string, hexKey: string, wxid: string): Promise<{ success: boolean; error?: string; sessionCount?: number }> {
@@ -89,6 +90,7 @@ export class WcdbService extends EventEmitter {
   }
 
   async open(dbPath: string, hexKey: string, wxid: string): Promise<boolean> {
+    this.shuttingDown = false
     const payload = { dbPath, hexKey, wxid }
     this.lastOpenPayload = payload
     this.openPromise = this.call<boolean>('open', payload)
@@ -100,24 +102,22 @@ export class WcdbService extends EventEmitter {
 
   close(): void {
     this.lastOpenPayload = null
-    // 没有 worker 时无需冷启动，直接返回（与旧同步实现行为一致）
     if (!this.worker) return
-    const w = this.worker
-    const id = ++this.seq
-    try { w.postMessage({ id, type: 'close', payload: {} } as WorkerRequest) } catch { /* ignore */ }
+    this.postToUtility(this.worker, { id: ++this.seq, type: 'close', payload: {} })
   }
 
   shutdown(): void {
     this.shuttingDown = true
+    this.monitorRequested = false
     this.lastOpenPayload = null
     this.openPromise = null
     const w = this.worker
     this.worker = null
     this.initPromise = null
-    this.rejectAllPending('wcdb service shutdown')
+    this.rejectAllPending('wcdb utility process shutdown')
     if (w) {
-      try { w.postMessage({ id: ++this.seq, type: 'shutdown', payload: {} }) } catch { /* ignore */ }
-      void w.terminate().catch(() => undefined)
+      this.postToUtility(w, { id: ++this.seq, type: 'shutdown', payload: {} })
+      try { w.kill() } catch { /* ignore */ }
     }
     if (this.restartTimer) {
       clearTimeout(this.restartTimer)
@@ -211,11 +211,14 @@ export class WcdbService extends EventEmitter {
   }
 
   async setMonitor(): Promise<boolean> {
-    const res = await this.call<{ success: boolean }>('setMonitor', {})
+    this.monitorRequested = true
+    const res = await this.callWithAutoOpen<{ success: boolean }>('setMonitor', {})
     return !!res?.success
   }
 
   async stopMonitor(): Promise<void> {
+    this.monitorRequested = false
+    if (!this.worker) return
     await this.call('stopMonitor', {})
   }
 
@@ -227,39 +230,64 @@ export class WcdbService extends EventEmitter {
     return encryptedData
   }
 
-  // ========= Worker 管理 =========
+  // ========= utilityProcess 管理 =========
   async initWorker(): Promise<void> {
+    this.shuttingDown = false
     if (this.worker) return
     if (this.initPromise) return this.initPromise
 
     this.initPromise = new Promise<void>((resolve, reject) => {
-      const workerPath = this.resolveWorkerPath()
-      if (!workerPath) {
+      const utilityPath = this.resolveUtilityPath()
+      if (!utilityPath) {
         this.initPromise = null
-        reject(new Error(`未找到 ${WORKER_FILE}`))
+        reject(new Error(`未找到 ${UTILITY_FILE}`))
         return
       }
 
-      let worker: Worker
+      let worker: UtilityProcess
       try {
-        worker = new Worker(workerPath)
+        worker = utilityProcess.fork(utilityPath, [], {
+          serviceName: 'CipherTalk WCDB',
+          stdio: 'pipe',
+          allowLoadingUnsignedLibraries: process.platform === 'darwin'
+        })
       } catch (e: any) {
         this.initPromise = null
-        reject(new Error(`启动 wcdbWorker 失败: ${e?.message || String(e)}`))
+        reject(new Error(`启动 WCDB utility process 失败: ${e?.message || String(e)}`))
         return
       }
 
       this.worker = worker
       let readyFired = false
 
-      worker.on('message', (msg: WorkerResponse) => {
-        // native 管道变更事件
+      const rejectInitOnce = (err: Error) => {
+        if (!readyFired) {
+          readyFired = true
+          reject(err)
+        }
+      }
+
+      worker.on('spawn', () => {
+        console.info(`[wcdbService] utility process spawned pid=${worker.pid ?? 'unknown'}`)
+      })
+
+      worker.stdout?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString().trim()
+        if (text) console.log(`[wcdbUtility:${worker.pid ?? 'unknown'}] ${text}`)
+      })
+
+      worker.stderr?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString().trim()
+        if (text) console.error(`[wcdbUtility:${worker.pid ?? 'unknown'}] ${text}`)
+      })
+
+      worker.on('message', (msg: UtilityResponse) => {
         if (msg?.id === -1 && msg.type === 'monitor') {
           const p = msg.payload || {}
           this.emit('change', p.type, p.json)
           return
         }
-        // Worker 启动就绪：下发 setPaths，然后结束 init
+
         if (msg?.id === 0 && msg.type === 'ready') {
           const appPath = getAppPath()
           const resourcesRoot = process.resourcesPath || appPath
@@ -267,32 +295,22 @@ export class WcdbService extends EventEmitter {
             ? join(resourcesRoot, 'resources')
             : join(appPath, 'resources')
           const userDataPath = getUserDataPath()
-          try {
-            const id = ++this.seq
-            worker.postMessage({ id, type: 'setPaths', payload: { resourcesPath, userDataPath } } as WorkerRequest)
-            this.pending.set(id, {
-              resolve: () => {
-                if (!readyFired) {
-                  readyFired = true
-                  resolve()
-                }
-              },
-              reject: (err) => {
-                if (!readyFired) {
-                  readyFired = true
-                  reject(err instanceof Error ? err : new Error(String(err)))
-                }
+          const id = ++this.seq
+          this.pending.set(id, {
+            resolve: () => {
+              if (!readyFired) {
+                readyFired = true
+                resolve()
               }
-            })
-          } catch (e: any) {
-            if (!readyFired) {
-              readyFired = true
-              reject(new Error(`wcdbWorker setPaths 失败: ${e?.message || String(e)}`))
+            },
+            reject: (err) => {
+              rejectInitOnce(err instanceof Error ? err : new Error(String(err)))
             }
-          }
+          })
+          this.postToUtility(worker, { id, type: 'setPaths', payload: { resourcesPath, userDataPath } })
           return
         }
-        // 普通 RPC 回复
+
         if (typeof msg?.id === 'number') {
           const pending = this.pending.get(msg.id)
           if (!pending) return
@@ -302,20 +320,29 @@ export class WcdbService extends EventEmitter {
         }
       })
 
-      worker.on('error', (err) => {
-        console.error('[wcdbService] worker error:', err)
+      worker.on('error', (type, location, report) => {
+        console.error('[wcdbService] utility process fatal:', {
+          pid: worker.pid,
+          type,
+          location,
+          reportLength: report?.length || 0
+        })
+        if (this.worker === worker) this.worker = null
+        this.initPromise = null
+        this.openPromise = null
+        this.rejectAllPending(`wcdb utility process fatal (${type}${location ? ` at ${location}` : ''})`)
+        rejectInitOnce(new Error(`WCDB utility process fatal: ${type}`))
       })
 
       worker.on('exit', (code) => {
+        const pid = worker.pid
         if (this.worker === worker) this.worker = null
         this.initPromise = null
-        this.rejectAllPending(`worker crashed (exit=${code})`)
-        if (!readyFired) {
-          readyFired = true
-          reject(new Error(`wcdbWorker 启动后立即退出，code=${code}`))
-        }
+        this.openPromise = null
+        this.rejectAllPending(`wcdb utility process exited (pid=${pid ?? 'unknown'}, code=${code})`)
+        rejectInitOnce(new Error(`WCDB utility process 启动后立即退出，code=${code}`))
         if (!this.shuttingDown) {
-          console.warn(`[wcdbService] worker 退出 code=${code}，${RESTART_DELAY_MS}ms 后自动重启`)
+          console.warn(`[wcdbService] utility process 退出 pid=${pid ?? 'unknown'} code=${code}，${RESTART_DELAY_MS}ms 后自动重启`)
           this.scheduleRestart()
         }
       })
@@ -333,11 +360,32 @@ export class WcdbService extends EventEmitter {
     if (this.restartTimer || this.shuttingDown) return
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null
-      if (this.shuttingDown || this.worker) return
-      this.initWorker().catch((e) => {
-        console.error('[wcdbService] 自动重启失败:', e?.message || e)
-      })
+      if (this.shuttingDown) return
+      this.initWorker()
+        .then(() => this.restoreStateAfterRestart())
+        .catch((e) => {
+          console.error('[wcdbService] 自动重启失败:', e?.message || e)
+        })
     }, RESTART_DELAY_MS)
+  }
+
+  private async restoreStateAfterRestart(): Promise<void> {
+    if (this.shuttingDown || !this.worker) return
+
+    const reopened = await this.ensureOpen().catch((e) => {
+      console.error('[wcdbService] 自动重启后 reopen 失败:', e?.message || e)
+      return false
+    })
+    if (!reopened || !this.monitorRequested) return
+
+    try {
+      const res = await this.call<{ success: boolean }>('setMonitor', {})
+      if (!res?.success) {
+        console.warn('[wcdbService] 自动重启后重新注册 native monitor 失败')
+      }
+    } catch (e: any) {
+      console.warn('[wcdbService] 自动重启后重新注册 native monitor 异常:', e?.message || e)
+    }
   }
 
   private rejectAllPending(reason: string): void {
@@ -349,20 +397,24 @@ export class WcdbService extends EventEmitter {
     this.pending.clear()
   }
 
+  private postToUtility(worker: UtilityProcess, msg: UtilityRequest): void {
+    try { worker.postMessage(msg) } catch { /* ignore */ }
+  }
+
   private async call<T = any>(type: string, payload: any): Promise<T> {
     await this.initWorker()
     if (!this.worker) {
-      throw new Error('wcdbWorker 未就绪')
+      throw new Error('WCDB utility process 未就绪')
     }
     const id = ++this.seq
     const w = this.worker
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
       try {
-        w.postMessage({ id, type, payload } as WorkerRequest)
+        w.postMessage({ id, type, payload } as UtilityRequest)
       } catch (e: any) {
         this.pending.delete(id)
-        reject(new Error(`postMessage 失败: ${e?.message || String(e)}`))
+        reject(new Error(`utility postMessage 失败: ${e?.message || String(e)}`))
       }
     })
   }
@@ -416,24 +468,23 @@ export class WcdbService extends EventEmitter {
   }
 
   /**
-   * 解析 wcdbWorker.js 路径。dev / packaged 候选路径参考 findElectronWorkerPath。
-   * 不直接复用那个工具函数，是为了避免与 main/workers 形成循环或 ipc 依赖。
+   * 解析 wcdbUtilityProcess.js 路径。packaged 模式优先使用 asar.unpacked，避免子进程加载原生依赖时踩到 asar 边界。
    */
-  private resolveWorkerPath(): string | null {
+  private resolveUtilityPath(): string | null {
     const appPath = getAppPath()
     const resourcesRoot = process.resourcesPath || appPath
     const candidates = isElectronPackaged()
       ? [
-          join(resourcesRoot, 'app.asar', 'dist-electron', WORKER_FILE),
-          join(resourcesRoot, 'app.asar.unpacked', 'dist-electron', WORKER_FILE),
-          join(resourcesRoot, 'dist-electron', WORKER_FILE),
-          join(__dirname, WORKER_FILE),
-          join(__dirname, '..', WORKER_FILE)
+          join(resourcesRoot, 'app.asar.unpacked', 'dist-electron', UTILITY_FILE),
+          join(resourcesRoot, 'app.asar', 'dist-electron', UTILITY_FILE),
+          join(resourcesRoot, 'dist-electron', UTILITY_FILE),
+          join(__dirname, UTILITY_FILE),
+          join(__dirname, '..', UTILITY_FILE)
         ]
       : [
-          join(__dirname, '..', WORKER_FILE),
-          join(__dirname, WORKER_FILE),
-          join(appPath, 'dist-electron', WORKER_FILE)
+          join(__dirname, UTILITY_FILE),
+          join(__dirname, '..', UTILITY_FILE),
+          join(appPath, 'dist-electron', UTILITY_FILE)
         ]
     return candidates.find((c) => existsSync(c)) || null
   }
