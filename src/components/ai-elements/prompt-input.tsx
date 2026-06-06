@@ -301,14 +301,14 @@ export function PromptInputAttachment({
       <HoverCardTrigger asChild>
         <div
           className={cn(
-            "group relative flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-md border border-border px-1.5 font-medium text-sm transition-all hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+            "group relative flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-[var(--agent-radius,12px)] border border-border px-1.5 font-medium text-sm transition-all hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
             className
           )}
           key={data.id}
           {...props}
         >
           <div className="relative size-5 shrink-0">
-            <div className="absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded bg-background transition-opacity group-hover:opacity-0">
+            <div className="absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded-[var(--agent-radius,12px)] bg-background transition-opacity group-hover:opacity-0">
               {isImage ? (
                 <img
                   alt={filename || "attachment"}
@@ -325,7 +325,7 @@ export function PromptInputAttachment({
             </div>
             <Button
               aria-label="Remove attachment"
-              className="absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
+              className="absolute inset-0 size-5 cursor-pointer rounded-[var(--agent-radius,12px)] p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
               onClick={(e) => {
                 e.stopPropagation();
                 attachments.remove(data.id);
@@ -344,7 +344,7 @@ export function PromptInputAttachment({
       <PromptInputHoverCardContent className="w-auto p-2">
         <div className="w-auto space-y-3">
           {isImage && (
-            <div className="flex max-h-96 w-96 items-center justify-center overflow-hidden rounded-md border">
+            <div className="flex max-h-96 w-96 items-center justify-center overflow-hidden rounded-[var(--agent-radius,12px)] border">
               <img
                 alt={filename || "attachment preview"}
                 className="max-h-full max-w-full object-contain"
@@ -967,7 +967,7 @@ export const PromptInputButton = ({
 
   return (
     <InputGroupButton
-      className={cn(className)}
+      className={cn("rounded-[var(--agent-radius,12px)]", className)}
       size={newSize}
       type="button"
       variant={variant}
@@ -1002,7 +1002,7 @@ export const PromptInputActionMenuContent = ({
   className,
   ...props
 }: PromptInputActionMenuContentProps) => (
-  <DropdownMenuContent align="start" className={cn(className)} {...props} />
+  <DropdownMenuContent align="start" className={cn("rounded-[var(--agent-radius,12px)]", className)} {...props} />
 );
 
 export type PromptInputActionMenuItemProps = ComponentProps<
@@ -1012,7 +1012,7 @@ export const PromptInputActionMenuItem = ({
   className,
   ...props
 }: PromptInputActionMenuItemProps) => (
-  <DropdownMenuItem className={cn(className)} {...props} />
+  <DropdownMenuItem className={cn("rounded-[var(--agent-radius,12px)]", className)} {...props} />
 );
 
 // Note: Actions that perform side-effects (like opening a file dialog)
@@ -1108,6 +1108,73 @@ declare global {
   }
 }
 
+type LocalRecorder = {
+  audioContext: AudioContext;
+  chunks: Float32Array[];
+  processor: ScriptProcessorNode;
+  source: MediaStreamAudioSourceNode;
+  stream: MediaStream;
+};
+
+const mergeAudioChunks = (chunks: Float32Array[]) => {
+  const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const merged = new Float32Array(length);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return merged;
+};
+
+const writeString = (view: DataView, offset: number, value: string) => {
+  for (let i = 0; i < value.length; i++) {
+    view.setUint8(offset + i, value.charCodeAt(i));
+  }
+};
+
+const encodeWav = (samples: Float32Array, sampleRate: number) => {
+  const bytesPerSample = 2;
+  const channelCount = 1;
+  const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
+  const view = new DataView(buffer);
+
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + samples.length * bytesPerSample, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channelCount * bytesPerSample, true);
+  view.setUint16(32, channelCount * bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, "data");
+  view.setUint32(40, samples.length * bytesPerSample, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const sample = Math.max(-1, Math.min(1, samples[i] ?? 0));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+
+  return buffer;
+};
+
+const getWhisperLanguage = (language: string) => {
+  const normalized = language.toLowerCase();
+  if (normalized.startsWith("zh")) {
+    return "zh";
+  }
+  if (normalized.startsWith("en")) {
+    return "en";
+  }
+  return "auto";
+};
+
 export type PromptInputSpeechButtonProps = ComponentProps<
   typeof PromptInputButton
 > & {
@@ -1124,15 +1191,58 @@ export const PromptInputSpeechButton = ({
   ...props
 }: PromptInputSpeechButtonProps) => {
   const [isListening, setIsListening] = useState(false);
+  const [isPreparingRecording, setIsPreparingRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [recognition, setRecognition] = useState<SpeechRecognition | null>(
     null
   );
   const controller = useOptionalPromptInputController();
   const controllerRef = useRef(controller);
+  const recorderRef = useRef<LocalRecorder | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   controllerRef.current = controller;
 
+  const isElectron =
+    typeof window !== "undefined" && Boolean((window as any).electronAPI);
+  const hasLocalWhisper =
+    isElectron && Boolean((window as any).electronAPI?.sttWhisper);
+
+  const appendTranscript = useCallback(
+    (transcript: string) => {
+      const text = transcript.trim();
+      if (!text) {
+        return;
+      }
+
+      if (textareaRef?.current) {
+        const textarea = textareaRef.current;
+        const currentValue = textarea.value;
+        const newValue = currentValue + (currentValue ? " " : "") + text;
+
+        textarea.value = newValue;
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        onTranscriptionChange?.(newValue);
+        return;
+      }
+
+      if (controllerRef.current) {
+        const currentValue = controllerRef.current.textInput.value;
+        const newValue = currentValue + (currentValue ? " " : "") + text;
+
+        controllerRef.current.textInput.setInput(newValue);
+        onTranscriptionChange?.(newValue);
+      }
+    },
+    [textareaRef, onTranscriptionChange]
+  );
+
   useEffect(() => {
+    if (isElectron) {
+      setRecognition(null);
+      return;
+    }
+
     if (
       typeof window !== "undefined" &&
       ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
@@ -1163,28 +1273,17 @@ export const PromptInputSpeechButton = ({
           }
         }
 
-        if (finalTranscript && textareaRef?.current) {
-          const textarea = textareaRef.current;
-          const currentValue = textarea.value;
-          const newValue =
-            currentValue + (currentValue ? " " : "") + finalTranscript;
-
-          textarea.value = newValue;
-          textarea.dispatchEvent(new Event("input", { bubbles: true }));
-          onTranscriptionChange?.(newValue);
-        } else if (finalTranscript && controllerRef.current) {
-          const currentValue = controllerRef.current.textInput.value;
-          const newValue =
-            currentValue + (currentValue ? " " : "") + finalTranscript;
-
-          controllerRef.current.textInput.setInput(newValue);
-          onTranscriptionChange?.(newValue);
+        if (finalTranscript) {
+          appendTranscript(finalTranscript);
         }
       };
 
       speechRecognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
         setIsListening(false);
+        if (event.error === "network" || event.error === "not-allowed") {
+          recognitionRef.current?.stop();
+        }
       };
 
       recognitionRef.current = speechRecognition;
@@ -1196,32 +1295,240 @@ export const PromptInputSpeechButton = ({
         recognitionRef.current.stop();
       }
     };
-  }, [textareaRef, onTranscriptionChange, language]);
+  }, [appendTranscript, isElectron, language]);
+
+  useEffect(
+    () => () => {
+      const recorder = recorderRef.current;
+      if (!recorder) {
+        return;
+      }
+
+      recorder.processor.disconnect();
+      recorder.source.disconnect();
+      recorder.stream.getTracks().forEach((track) => track.stop());
+      void recorder.audioContext.close();
+      recorderRef.current = null;
+    },
+    []
+  );
+
+  const ensureWhisperModel = useCallback(async () => {
+    if (!hasLocalWhisper) {
+      setStatusLabel("当前环境不支持本地语音输入");
+      return null;
+    }
+
+    const electronAPI = (window as any).electronAPI;
+    const modelType =
+      ((await electronAPI.config?.get?.("whisperModelType")) as string) ||
+      "small";
+    const modelStatus = await electronAPI.sttWhisper.checkModel(modelType);
+
+    if (modelStatus.exists) {
+      return modelType;
+    }
+
+    const shouldDownload = window.confirm(
+      `Whisper ${modelType} 模型未下载，是否现在下载？\n下载完成后即可免费本地语音输入。`
+    );
+
+    if (!shouldDownload) {
+      setStatusLabel("本地模型未下载");
+      return null;
+    }
+
+    setStatusLabel("正在下载语音模型...");
+    const removeProgress = electronAPI.sttWhisper.onDownloadProgress(
+      (progress: { percent?: number }) => {
+        if (typeof progress.percent === "number") {
+          setStatusLabel(`正在下载语音模型 ${progress.percent.toFixed(1)}%`);
+        }
+      }
+    );
+
+    try {
+      const result = await electronAPI.sttWhisper.downloadModel(modelType);
+      if (!result.success) {
+        setStatusLabel(result.error || "语音模型下载失败");
+        return null;
+      }
+
+      setStatusLabel("语音模型已就绪");
+      return modelType;
+    } finally {
+      removeProgress?.();
+    }
+  }, [hasLocalWhisper]);
+
+  const startLocalRecording = useCallback(async () => {
+    if (isPreparingRecording || isTranscribing) {
+      return;
+    }
+
+    try {
+      setIsPreparingRecording(true);
+      const modelType = await ensureWhisperModel();
+      if (!modelType) {
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      const AudioContextCtor =
+        window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContextCtor();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const chunks: Float32Array[] = [];
+
+      processor.onaudioprocess = (event) => {
+        chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      };
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+
+      recorderRef.current = {
+        audioContext,
+        chunks,
+        processor,
+        source,
+        stream,
+      };
+      setStatusLabel(`正在录音，使用 Whisper ${modelType}`);
+      setIsListening(true);
+    } catch (error) {
+      console.error("Local speech recording failed:", error);
+      setStatusLabel("无法开始录音");
+      setIsListening(false);
+    } finally {
+      setIsPreparingRecording(false);
+    }
+  }, [ensureWhisperModel, isPreparingRecording, isTranscribing]);
+
+  const stopLocalRecording = useCallback(async () => {
+    const recorder = recorderRef.current;
+    if (!recorder) {
+      return;
+    }
+
+    recorderRef.current = null;
+    setIsListening(false);
+
+    recorder.processor.disconnect();
+    recorder.source.disconnect();
+    recorder.stream.getTracks().forEach((track) => track.stop());
+    await recorder.audioContext.close();
+
+    const samples = mergeAudioChunks(recorder.chunks);
+    if (samples.length === 0) {
+      setStatusLabel("没有录到声音");
+      return;
+    }
+
+    try {
+      setIsTranscribing(true);
+      setStatusLabel("正在本地转写...");
+      const electronAPI = (window as any).electronAPI;
+      const modelType =
+        ((await electronAPI.config?.get?.("whisperModelType")) as string) ||
+        "small";
+      const wavData = encodeWav(samples, recorder.audioContext.sampleRate);
+      const result = await electronAPI.sttWhisper.transcribe(wavData, {
+        modelType,
+        language: getWhisperLanguage(language),
+      });
+
+      if (result.success && result.transcript) {
+        appendTranscript(result.transcript);
+        setStatusLabel("本地转写完成");
+      } else {
+        setStatusLabel(result.error || "本地转写失败");
+      }
+    } catch (error) {
+      console.error("Local speech transcription failed:", error);
+      setStatusLabel("本地转写失败");
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, [appendTranscript, language]);
 
   const toggleListening = useCallback(() => {
+    if (hasLocalWhisper) {
+      if (isPreparingRecording) {
+        return;
+      }
+
+      if (isListening) {
+        void stopLocalRecording();
+      } else {
+        void startLocalRecording();
+      }
+      return;
+    }
+
     if (!recognition) {
       return;
     }
 
-    if (isListening) {
-      recognition.stop();
-    } else {
-      recognition.start();
+    try {
+      if (isListening) {
+        recognition.stop();
+      } else {
+        recognition.start();
+      }
+    } catch (error) {
+      console.error("Speech recognition toggle failed:", error);
+      setIsListening(false);
     }
-  }, [recognition, isListening]);
+  }, [
+    hasLocalWhisper,
+    isListening,
+    isPreparingRecording,
+    recognition,
+    startLocalRecording,
+    stopLocalRecording,
+  ]);
+
+  const buttonTitle = isListening
+    ? "停止录音并转写"
+    : isPreparingRecording
+      ? statusLabel || "正在准备本地语音输入..."
+      : isTranscribing
+      ? "正在本地转写..."
+      : statusLabel || (hasLocalWhisper ? "免费本地语音输入" : props.title);
 
   return (
     <PromptInputButton
       className={cn(
         "relative transition-all duration-200",
         isListening && "animate-pulse bg-accent text-accent-foreground",
+        (isPreparingRecording || isTranscribing) && "animate-pulse",
         className
       )}
-      disabled={!recognition}
+      disabled={
+        isPreparingRecording ||
+        isTranscribing ||
+        (!hasLocalWhisper && !recognition)
+      }
       onClick={toggleListening}
+      title={
+        buttonTitle ||
+        (recognition ? props.title : "当前环境不支持语音输入")
+      }
       {...props}
     >
-      <MicIcon className="size-4" />
+      {isPreparingRecording || isTranscribing ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <MicIcon className="size-4" />
+      )}
     </PromptInputButton>
   );
 };
@@ -1242,7 +1549,7 @@ export const PromptInputSelectTrigger = ({
 }: PromptInputSelectTriggerProps) => (
   <SelectTrigger
     className={cn(
-      "border-none bg-transparent font-medium text-muted-foreground shadow-none transition-colors",
+      "rounded-[var(--agent-radius,12px)] border-none bg-transparent font-medium text-muted-foreground shadow-none transition-colors",
       "hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground",
       className
     )}
@@ -1258,7 +1565,7 @@ export const PromptInputSelectContent = ({
   className,
   ...props
 }: PromptInputSelectContentProps) => (
-  <SelectContent className={cn(className)} {...props} />
+  <SelectContent className={cn("rounded-[var(--agent-radius,12px)]", className)} {...props} />
 );
 
 export type PromptInputSelectItemProps = ComponentProps<typeof SelectItem>;
@@ -1267,7 +1574,7 @@ export const PromptInputSelectItem = ({
   className,
   ...props
 }: PromptInputSelectItemProps) => (
-  <SelectItem className={cn(className)} {...props} />
+  <SelectItem className={cn("rounded-[var(--agent-radius,12px)]", className)} {...props} />
 );
 
 export type PromptInputSelectValueProps = ComponentProps<typeof SelectValue>;
@@ -1303,9 +1610,10 @@ export type PromptInputHoverCardContentProps = ComponentProps<
 
 export const PromptInputHoverCardContent = ({
   align = "start",
+  className,
   ...props
 }: PromptInputHoverCardContentProps) => (
-  <HoverCardContent align={align} {...props} />
+  <HoverCardContent align={align} className={cn("rounded-[var(--agent-radius,12px)]", className)} {...props} />
 );
 
 export type PromptInputTabsListProps = HTMLAttributes<HTMLDivElement>;

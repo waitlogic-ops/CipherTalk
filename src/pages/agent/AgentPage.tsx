@@ -2,7 +2,7 @@
  * AI Agent 对话页（Phase C）——使用 AI SDK 的 useChat + AI Elements 组件。
  * 数据：useChat 走 IpcChatTransport（IPC → AI 子进程 → 流式 UIMessageChunk）。
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { isToolUIPart, type ChatStatus } from 'ai'
 import { BarChart3, Braces, Brain, CheckIcon, Clock3, FileText, Image as ImageIcon, Search, Wrench } from 'lucide-react'
@@ -281,7 +281,7 @@ export default function AgentPage() {
   }, [])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div style={{ '--agent-radius': '12px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 } as CSSProperties}>
       <Conversation className="flex-1">
         <ConversationContent>
           {messages.length === 0 ? (
@@ -373,7 +373,7 @@ export default function AgentPage() {
         <PromptInputProvider>
           <PromptInput
             accept="image/*,.txt,.md,.json,.csv"
-            className="**:data-[slot=input-group]:rounded-2xl **:data-[slot=input-group]:border-border/60 **:data-[slot=input-group]:bg-card/80 **:data-[slot=input-group]:shadow-lg **:data-[slot=input-group]:backdrop-blur-xl"
+            className="**:data-[slot=input-group]:rounded-[var(--agent-radius,12px)] **:data-[slot=input-group]:border-border/60 **:data-[slot=input-group]:bg-card/80 **:data-[slot=input-group]:shadow-lg **:data-[slot=input-group]:backdrop-blur-xl"
             maxFiles={6}
             maxFileSize={8 * 1024 * 1024}
             multiple
@@ -406,7 +406,7 @@ export default function AgentPage() {
                   onValueChange={(value) => setReasoningEffort(value as AgentReasoningEffort)}
                   value={reasoningEffort}
                 >
-                  <PromptInputSelectTrigger aria-label="思考程度" className="h-8 gap-1.5 px-2.5">
+                  <PromptInputSelectTrigger aria-label="思考程度" className="h-8 gap-1.5 rounded-[var(--agent-radius,12px)] px-2.5">
                     <Brain className="size-3.5" />
                     <PromptInputSelectValue />
                   </PromptInputSelectTrigger>
@@ -421,7 +421,7 @@ export default function AgentPage() {
 
                 <ModelSelector onOpenChange={setModelOpen} open={modelOpen}>
                   <ModelSelectorTrigger asChild>
-                    <Button className="max-w-48 rounded-xl border-border/60 bg-transparent hover:bg-accent/50" variant="outline">
+                    <Button className="max-w-48 rounded-[var(--agent-radius,12px)] border-border/60 bg-transparent hover:bg-accent/50" variant="outline">
                       {selectedModelData?.chefSlug && (
                         <AIProviderLogo providerId={selectedModelData.chefSlug} alt={selectedModelData.chef} className="shrink-0" size={18} />
                       )}

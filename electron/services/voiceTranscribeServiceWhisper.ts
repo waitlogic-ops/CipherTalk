@@ -84,6 +84,20 @@ const MODELS: Record<string, ModelConfig> = {
     }
 }
 
+type WavBufferInput = Buffer | ArrayBuffer | ArrayBufferView
+
+function normalizeWavBuffer(wavData: WavBufferInput): Buffer {
+    if (Buffer.isBuffer(wavData)) {
+        return wavData
+    }
+
+    if (ArrayBuffer.isView(wavData)) {
+        return Buffer.from(wavData.buffer, wavData.byteOffset, wavData.byteLength)
+    }
+
+    return Buffer.from(wavData)
+}
+
 export class VoiceTranscribeServiceWhisper {
     private modelsDir: string
     private whisperExe: string
@@ -255,7 +269,7 @@ export class VoiceTranscribeServiceWhisper {
      * 语音转文字
      */
     async transcribeWavBuffer(
-        wavData: Buffer,
+        wavData: WavBufferInput,
         modelType: keyof typeof MODELS = 'small',
         language: string = 'auto'
     ): Promise<{ success: boolean; transcript?: string; error?: string }> {
@@ -279,7 +293,7 @@ export class VoiceTranscribeServiceWhisper {
         try {
             // 保存临时 WAV 文件
             tempWavPath = join(app.getPath('temp'), `whisper_${Date.now()}.wav`)
-            writeFileSync(tempWavPath, wavData)
+            writeFileSync(tempWavPath, normalizeWavBuffer(wavData))
             txtPath = tempWavPath + '.txt'
 
             // 构建命令参数

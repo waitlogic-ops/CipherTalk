@@ -486,7 +486,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     downloadModel: (modelType: string) => ipcRenderer.invoke('stt-whisper:download-model', modelType),
     cancelDownloadModel: (modelType: string) => ipcRenderer.invoke('stt-whisper:cancel-download-model', modelType),
     clearModel: (modelType: string) => ipcRenderer.invoke('stt-whisper:clear-model', modelType),
-    transcribe: (wavData: Buffer, options: { modelType?: string; language?: string }) =>
+    transcribe: (wavData: Buffer | ArrayBuffer | Uint8Array, options: { modelType?: string; language?: string }) =>
       ipcRenderer.invoke('stt-whisper:transcribe', wavData, options),
     onDownloadProgress: (callback: (progress: { downloadedBytes: number; totalBytes?: number; percent?: number }) => void) => {
       ipcRenderer.on('stt-whisper:download-progress', (_, progress) => callback(progress))

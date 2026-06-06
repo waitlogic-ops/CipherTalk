@@ -881,7 +881,7 @@ export interface ElectronAPI {
       success: boolean
       error?: string
     }>
-    transcribe: (wavData: Buffer, options: { modelType?: string; language?: string }) => Promise<{
+    transcribe: (wavData: Buffer | ArrayBuffer | Uint8Array, options: { modelType?: string; language?: string }) => Promise<{
       success: boolean
       transcript?: string
       error?: string

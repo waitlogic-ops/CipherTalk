@@ -187,13 +187,19 @@ export function registerSttHandlers(ctx: MainProcessContext): void {
   })
 
   // 语音识别
-  ipcMain.handle('stt-whisper:transcribe', async (_, wavData: Buffer, options: {
+  ipcMain.handle('stt-whisper:transcribe', async (_, wavData: Buffer | ArrayBuffer | Uint8Array, options: {
     modelType?: string
     language?: string
   }) => {
     try {
+      const wavBuffer = Buffer.isBuffer(wavData)
+        ? wavData
+        : wavData instanceof ArrayBuffer
+          ? Buffer.from(wavData)
+          : Buffer.from(wavData)
+
       return await voiceTranscribeServiceWhisper.transcribeWavBuffer(
-        wavData,
+        wavBuffer,
         (options.modelType || 'small') as any,
         options.language || 'auto'
       )
