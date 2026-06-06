@@ -45,7 +45,7 @@ export async function runAgent(
     const agent = new ToolLoopAgent({
       model: createLanguageModel(input.providerConfig),
       instructions: buildSystemPrompt(input.scope),
-      tools: withToolTimeouts(buildTools(input.scope)),
+      tools: withToolTimeouts(buildTools(input.scope, input.providerConfig)),
       // 步数上限 + 死循环检测（连续 N 步相同工具调用即停），见 guards.ts
       stopWhen: [stepCountIs(MAX_STEPS), loopGuardCondition()],
       providerOptions: buildReasoningProviderOptions(input),

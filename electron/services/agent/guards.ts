@@ -15,10 +15,11 @@ import { reportAgentProgress } from './progress'
 const MAX_IDENTICAL_TOOL_REPEATS = 3
 /** 工具执行默认超时（毫秒）。本地 SQLite 工具远快于此，超时即视为卡死。 */
 const DEFAULT_TOOL_TIMEOUT_MS = 60_000
-/** 首次会触发重建（嵌入 / FTS 索引）的重工具，给更宽松超时。 */
+/** 首次会触发重建（嵌入 / FTS 索引）或本身跑子 Agent 的重工具，给更宽松超时。 */
 const TOOL_TIMEOUT_OVERRIDES: Record<string, number> = {
   semantic_search: 240_000,
   search_messages: 240_000,
+  delegate_analysis: 360_000, // 子 Agent 整轮（多步 + 可能触发首次重建），给更长上限
 }
 
 function stepFingerprint(step: StepResult<ToolSet>): string | null {
