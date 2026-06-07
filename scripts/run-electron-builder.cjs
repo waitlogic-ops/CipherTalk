@@ -12,17 +12,32 @@ if (!target || !['win', 'mac'].includes(target)) {
 
 const cliPath = require.resolve('electron-builder/cli.js')
 const configPath = path.join(__dirname, 'electron-builder.config.cjs')
+const env = {
+  ...process.env,
+  CIPHERTALK_BUILD_TARGET: target,
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+}
+
+if (env.GITHUB_ACTIONS) {
+  for (const key of Object.keys(env)) {
+    const normalized = key.toLowerCase()
+    if (
+      normalized === 'electron_mirror' ||
+      normalized === 'electron_builder_binaries_mirror' ||
+      normalized === 'npm_config_electron_mirror' ||
+      normalized === 'npm_config_electron_builder_binaries_mirror'
+    ) {
+      delete env[key]
+    }
+  }
+}
 
 const result = spawnSync(
   process.execPath,
   [cliPath, `--${target}`, '--publish', 'never', '--config', configPath],
   {
     stdio: 'inherit',
-    env: {
-      ...process.env,
-      CIPHERTALK_BUILD_TARGET: target,
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-    }
+    env
   }
 )
 
