@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, ChevronDown, ChevronUp, ListOrdered, MessageSquare, MessageSquareDashed, Newspaper, Pin, RefreshCw, Search, X } from 'lucide-react'
+import { Button, SearchField, Tooltip } from '@heroui/react'
+import { AlertCircle, ChevronDown, ChevronUp, ListOrdered, MessageSquare, MessageSquareDashed, Newspaper, Pin, RefreshCw } from 'lucide-react'
 import { List } from 'react-window'
 import type { RowComponentProps } from 'react-window'
 import MessageContent from '../../../components/MessageContent'
@@ -600,29 +601,41 @@ export function SessionSidebar({
     >
       <div className="session-header">
         <div className="search-row">
-          <div className="search-box expanded">
-            <Search size={14} />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="搜索"
-              value={searchKeyword}
-              onChange={(e) => onSearch(e.target.value)}
-            />
-            {searchKeyword && (
-              <button className="close-search" onClick={onCloseSearch}>
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          <button
-            className="icon-btn refresh-btn"
-            onClick={onRefresh}
-            disabled={isLoadingSessions}
-            data-tooltip="刷新会话列表"
+          <SearchField
+            aria-label="搜索会话"
+            className="search-box expanded"
+            fullWidth
+            onChange={onSearch}
+            onClear={onCloseSearch}
+            value={searchKeyword}
+            variant="secondary"
           >
-            <RefreshCw size={16} className={isLoadingSessions || isUpdating ? 'spin' : ''} />
-          </button>
+            <SearchField.Group className="search-box__group">
+              <SearchField.SearchIcon className="search-box__icon" />
+              <SearchField.Input
+                ref={searchInputRef}
+                className="search-box__input"
+                placeholder="搜索"
+              />
+              <SearchField.ClearButton className="search-box__clear" />
+            </SearchField.Group>
+          </SearchField>
+          <Tooltip delay={0}>
+            <Tooltip.Trigger>
+              <Button
+                aria-label="刷新会话列表"
+                className="refresh-btn"
+                isDisabled={isLoadingSessions}
+                isIconOnly
+                onPress={onRefresh}
+                size="sm"
+                variant="ghost"
+              >
+                <RefreshCw size={16} className={isLoadingSessions || isUpdating ? 'animate-spin' : ''} />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content>刷新会话列表</Tooltip.Content>
+          </Tooltip>
         </div>
       </div>
 

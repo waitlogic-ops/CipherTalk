@@ -15,6 +15,7 @@ export function registerConfigHandlers(ctx: MainProcessContext): void {
 
   ipcMain.handle('config:set', async (_, key: string, value: any) => {
     const result = ctx.getConfigService()?.set(key as any, value)
+    ctx.broadcastToWindows('config:changed', { key, value })
     if (['myWxid', 'dbPath', 'decryptKey'].includes(key)) clearStatsCaches()
     return result
   })

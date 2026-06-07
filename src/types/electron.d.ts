@@ -118,6 +118,7 @@ export interface ElectronAPI {
     set: (key: string, value: unknown) => Promise<void>
     getTldCache: () => Promise<{ tlds: string[]; updatedAt: number } | null>
     setTldCache: (tlds: string[]) => Promise<void>
+    onChanged: (callback: (payload: { key: string; value: unknown }) => void) => () => void
   }
   accounts: {
     list: () => Promise<AccountProfile[]>

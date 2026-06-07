@@ -1,7 +1,7 @@
 /**
  * 工具装配。按 scope 返回 ToolSet 给 ToolLoopAgent。
  * 工具职责与串联见文档 §7 / prompts.ts。summarize_period（按需摘要）后置。
- * buildBaseTools 为 10 个读/查工具；buildTools 在其上加 delegate_analysis（子 Agent，需 providerConfig）。
+ * buildBaseTools 为 10 个读/查工具；buildTools 在其上加 remember/recall（长期记忆）与 delegate_analysis（子 Agent，需 providerConfig）。
  * 子 Agent 复用 buildBaseTools（不含 delegate_analysis），避免递归委托。
  */
 import type { ToolSet } from 'ai'
@@ -18,6 +18,7 @@ import { groupMembers } from './groupMembers'
 import { groupMemberRanking } from './groupMemberRanking'
 import { querySql } from './querySql'
 import { updatePlan } from './updatePlan'
+import { createRemember, createRecall } from './memory'
 import { createDelegateAnalysis } from './delegateAnalysis'
 
 /** 基础读/查工具（不含 delegate_analysis），主 Agent 与子 Agent 共用。 */
@@ -40,6 +41,8 @@ export function buildBaseTools(_scope: AgentScope): ToolSet {
 export function buildTools(scope: AgentScope, providerConfig: AgentProviderConfig): ToolSet {
   return {
     ...buildBaseTools(scope),
+    remember: createRemember(scope),
+    recall: createRecall(scope),
     delegate_analysis: createDelegateAnalysis({
       providerConfig,
       scope,

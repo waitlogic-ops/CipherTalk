@@ -31,7 +31,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     get: (key: string) => ipcRenderer.invoke('config:get', key),
     set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
     getTldCache: () => ipcRenderer.invoke('config:getTldCache'),
-    setTldCache: (tlds: string[]) => ipcRenderer.invoke('config:setTldCache', tlds)
+    setTldCache: (tlds: string[]) => ipcRenderer.invoke('config:setTldCache', tlds),
+    onChanged: (callback: (payload: { key: string; value: unknown }) => void) => {
+      const listener = (_: any, payload: { key: string; value: unknown }) => callback(payload)
+      ipcRenderer.on('config:changed', listener)
+      return () => { ipcRenderer.removeListener('config:changed', listener) }
+    }
   },
 
   accounts: {

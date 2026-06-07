@@ -4,6 +4,7 @@ import { useChatStore, MAX_ACTIVE_MESSAGES } from '../../stores/chatStore'
 import { useUpdateStatusStore } from '../../stores/updateStatusStore'
 import ChatBackground from '../../components/ChatBackground'
 import { parseDateValue } from '../../components/AppDatePicker'
+import TitleBar from '../../components/TitleBar'
 import { getImageXorKey, getImageAesKey, getQuoteStyle, type QuoteStyleConfig } from '../../services/config'
 import type { ChatSession, Message } from '../../types/models'
 import { BatchDecryptModal } from './components/BatchDecryptModal'
@@ -41,9 +42,33 @@ const HISTORY_PAGE_SIZE = 25
 function ChatPage(_props: ChatPageProps) {
   const [quoteStyle, setQuoteStyle] = useState<QuoteStyleConfig>('default')
 
-  useEffect(() => {
-    getQuoteStyle().then(setQuoteStyle).catch(console.error)
+  const refreshQuoteStyle = useCallback(() => {
+    getQuoteStyle()
+      .then(setQuoteStyle)
+      .catch(console.error)
   }, [])
+
+  useEffect(() => {
+    refreshQuoteStyle()
+
+    const removeConfigListener = window.electronAPI.config.onChanged((payload) => {
+      if (payload.key === 'quoteStyle') refreshQuoteStyle()
+    })
+
+    const handleFocus = () => refreshQuoteStyle()
+    const handleVisibilityChange = () => {
+      if (!document.hidden) refreshQuoteStyle()
+    }
+
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      removeConfigListener()
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [refreshQuoteStyle])
 
   const {
     isConnected,
@@ -1489,92 +1514,96 @@ function ChatPage(_props: ChatPageProps) {
       <div className="resize-handle" onMouseDown={handleResizeStart} />
 
       {/* 右侧消息区域 */}
-      <div className="message-area">
-        {currentSession ? (
-          <>
-            <ChatHeader
-              currentSession={currentSession}
-              currentSessionId={currentSessionId}
-              isRefreshingMessages={isRefreshingMessages}
-              isLoadingMessages={isLoadingMessages}
-              isUpdating={isUpdating}
-              onRefreshMessages={handleRefreshMessages}
-              selectedDate={selectedDate}
-              onSelectedDateChange={setSelectedDate}
-              onJumpToDate={handleJumpToDate}
-              isJumpingToDate={isJumpingToDate}
-              isBatchTranscribing={isBatchTranscribing}
-              batchTranscribeProgress={batchTranscribeProgress}
-              onBatchTranscribe={handleBatchTranscribe}
-              isBatchDecrypting={isBatchDecrypting}
-              batchDecryptProgress={batchDecryptProgress}
-              onBatchDecrypt={handleBatchDecrypt}
-            />
+      <div className="message-shell">
+        <TitleBar className="message-titlebar" rightContent={<></>} showTitle={false} />
 
-            <div className="message-content-wrapper">
-              <MessageListVirtual
+        <div className="message-area">
+          {currentSession ? (
+            <>
+              <ChatHeader
                 currentSession={currentSession}
+                currentSessionId={currentSessionId}
+                isRefreshingMessages={isRefreshingMessages}
                 isLoadingMessages={isLoadingMessages}
-                messages={messages}
-                hasMoreMessages={hasMoreMessages}
-                isLoadingMore={isLoadingMore}
-                messageListRef={messageListRef}
-                onScroll={handleScroll}
-                myAvatarUrl={myAvatarUrl}
-                hasImageKey={hasImageKey}
-                quoteStyle={quoteStyle}
-                selectedMessages={selectedMessages}
-                selectMode={selectMode}
-                onToggleSelect={toggleSelectMessage}
-                setContextMenu={setContextMenu}
-                showScrollToBottom={showScrollToBottom}
-                scrollToBottom={scrollToBottom}
-                bottomSignal={vlistBottomSignal}
-                topSignal={vlistTopSignal}
+                isUpdating={isUpdating}
+                onRefreshMessages={handleRefreshMessages}
+                selectedDate={selectedDate}
+                onSelectedDateChange={setSelectedDate}
+                onJumpToDate={handleJumpToDate}
+                isJumpingToDate={isJumpingToDate}
+                isBatchTranscribing={isBatchTranscribing}
+                batchTranscribeProgress={batchTranscribeProgress}
+                onBatchTranscribe={handleBatchTranscribe}
+                isBatchDecrypting={isBatchDecrypting}
+                batchDecryptProgress={batchDecryptProgress}
+                onBatchDecrypt={handleBatchDecrypt}
               />
-            </div>
 
-            {selectMode && (
-              <div className="select-action-bar">
-                <span className="select-action-bar__count">已选 {selectedMessages.size} 条</span>
-                <div className="select-action-bar__btns">
-                  <button
-                    type="button"
-                    className="select-action-bar__btn"
-                    onClick={exitSelectMode}
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    className="select-action-bar__btn select-action-bar__btn--primary"
-                    disabled={selectedMessages.size === 0}
-                    onClick={() => setShowPoster(true)}
-                  >
-                    生成海报
-                  </button>
+              <div className="message-content-wrapper">
+                <MessageListVirtual
+                  currentSession={currentSession}
+                  isLoadingMessages={isLoadingMessages}
+                  messages={messages}
+                  hasMoreMessages={hasMoreMessages}
+                  isLoadingMore={isLoadingMore}
+                  messageListRef={messageListRef}
+                  onScroll={handleScroll}
+                  myAvatarUrl={myAvatarUrl}
+                  hasImageKey={hasImageKey}
+                  quoteStyle={quoteStyle}
+                  selectedMessages={selectedMessages}
+                  selectMode={selectMode}
+                  onToggleSelect={toggleSelectMessage}
+                  setContextMenu={setContextMenu}
+                  showScrollToBottom={showScrollToBottom}
+                  scrollToBottom={scrollToBottom}
+                  bottomSignal={vlistBottomSignal}
+                  topSignal={vlistTopSignal}
+                />
+              </div>
+
+              {selectMode && (
+                <div className="select-action-bar">
+                  <span className="select-action-bar__count">已选 {selectedMessages.size} 条</span>
+                  <div className="select-action-bar__btns">
+                    <button
+                      type="button"
+                      className="select-action-bar__btn"
+                      onClick={exitSelectMode}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      className="select-action-bar__btn select-action-bar__btn--primary"
+                      disabled={selectedMessages.size === 0}
+                      onClick={() => setShowPoster(true)}
+                    >
+                      生成海报
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="message-header empty-header">
+                <div className="header-info">
+                  <h3>聊天</h3>
                 </div>
               </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="message-header empty-header">
-              <div className="header-info">
-                <h3>聊天</h3>
-              </div>
-            </div>
-            <div className="message-content-wrapper">
-              <div className="message-list">
-                <ChatBackground />
-                <div className="empty-chat">
-                  <MessageSquare />
-                  <p>选择一个会话开始查看聊天记录</p>
+              <div className="message-content-wrapper">
+                <div className="message-list">
+                  <ChatBackground />
+                  <div className="empty-chat">
+                    <MessageSquare />
+                    <p>选择一个会话开始查看聊天记录</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       <ContextMenuPortal

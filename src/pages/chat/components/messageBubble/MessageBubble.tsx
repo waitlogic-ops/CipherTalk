@@ -285,7 +285,7 @@ function MessageBubble({ message, session, showTime, myAvatarUrl, isGroupChat, h
       )}
       <div
         ref={bubbleRef}
-        className={`message-bubble ${bubbleClass} ${isEmoji && message.emojiCdnUrl ? 'emoji' : ''} ${isImage ? 'image' : ''} ${isVideo ? 'video' : ''} ${isVoice ? 'voice' : ''} ${isSelected ? 'selected' : ''}`}
+        className={`message-bubble ${bubbleClass} quote-style-${quoteStyle} ${isEmoji && message.emojiCdnUrl ? 'emoji' : ''} ${isImage ? 'image' : ''} ${isVideo ? 'video' : ''} ${isVoice ? 'voice' : ''} ${isSelected ? 'selected' : ''}`}
         onContextMenu={(e) => {
           if (onContextMenu) {
             onContextMenu(e, message)

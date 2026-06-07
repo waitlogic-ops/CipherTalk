@@ -246,6 +246,8 @@
 /* 独立聊天窗口容器 */
 .chat-window-container {
   height: 100vh;
+  display: flex;
+  background: var(--bg-secondary);
   overflow: hidden;
 }
 

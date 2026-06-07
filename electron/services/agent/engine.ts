@@ -6,6 +6,7 @@ import { generateText, ToolLoopAgent, stepCountIs, type ProviderOptions, type UI
 import { createLanguageModel } from './provider'
 import { buildSystemPrompt } from './prompts'
 import { buildTools } from './tools'
+import { buildMemoryContext } from './tools/memory'
 import { compactMessages } from './compaction'
 import { loopGuardCondition, withToolTimeouts } from './guards'
 import { reportAgentProgress, withAgentProgress } from './progress'
@@ -42,9 +43,10 @@ export async function runAgent(
 ): Promise<void> {
   await withAgentProgress(onProgress, async () => {
     reportAgentProgress({ stage: 'run_started', title: '开始分析聊天记录' })
+    const memoryContext = await buildMemoryContext(input.scope)
     const agent = new ToolLoopAgent({
       model: createLanguageModel(input.providerConfig),
-      instructions: buildSystemPrompt(input.scope),
+      instructions: buildSystemPrompt(input.scope) + memoryContext,
       tools: withToolTimeouts(buildTools(input.scope, input.providerConfig)),
       // 步数上限 + 死循环检测（连续 N 步相同工具调用即停），见 guards.ts
       stopWhen: [stepCountIs(MAX_STEPS), loopGuardCondition()],
