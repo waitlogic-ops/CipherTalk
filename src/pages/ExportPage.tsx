@@ -2,9 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Search, Download, FolderOpen, RefreshCw, Check, FileJson, FileText, Table, Loader2, X, FileSpreadsheet, Database, FileCode, CheckCircle, XCircle, ExternalLink, MessageSquare, Users, User, Filter, Image, Video, CircleUserRound, Smile, Mic, Camera, Heart } from 'lucide-react'
 import DateRangePicker from '../components/DateRangePicker'
-import { useTitleBarStore } from '../stores/titleBarStore'
 import * as configService from '../services/config'
-import './ExportPage.scss'
+import './ExportPage.css'
 
 type ExportTab = 'chat' | 'contacts' | 'moments'
 
@@ -77,7 +76,6 @@ type SessionTypeFilter = 'all' | 'group' | 'private'
 
 function ExportPage() {
   const [activeTab, setActiveTab] = useState<ExportTab>('chat')
-  const setTitleBarContent = useTitleBarStore(state => state.setRightContent)
   const location = useLocation()
   const preSelectAppliedRef = useRef(false)
 
@@ -315,38 +313,6 @@ function ExportPage() {
       loadMoments()
     }
   }, [activeTab, moments.length, loadMoments])
-
-  // 设置标题栏右侧内容
-  useEffect(() => {
-    setTitleBarContent(
-      <div className="export-tabs">
-        <button
-          className={`export-tab ${activeTab === 'chat' ? 'active' : ''}`}
-          onClick={() => setActiveTab('chat')}
-        >
-          <MessageSquare size={14} />
-          <span>聊天记录</span>
-        </button>
-        <button
-          className={`export-tab ${activeTab === 'contacts' ? 'active' : ''}`}
-          onClick={() => setActiveTab('contacts')}
-        >
-          <Users size={14} />
-          <span>通讯录</span>
-        </button>
-        <button
-          className={`export-tab ${activeTab === 'moments' ? 'active' : ''}`}
-          onClick={() => setActiveTab('moments')}
-        >
-          <Camera size={14} />
-          <span>朋友圈</span>
-        </button>
-      </div>
-    )
-
-    // 离开页面时清除
-    return () => setTitleBarContent(null)
-  }, [activeTab, setTitleBarContent])
 
   // 聊天会话搜索与类型过滤
   useEffect(() => {
@@ -612,6 +578,35 @@ function ExportPage() {
     }
   }
 
+  const renderExportTabs = () => (
+    <div className="export-tabs" aria-label="导出模式">
+      <button
+        className={`export-tab ${activeTab === 'chat' ? 'active' : ''}`}
+        onClick={() => setActiveTab('chat')}
+        type="button"
+      >
+        <MessageSquare size={14} />
+        <span>聊天记录</span>
+      </button>
+      <button
+        className={`export-tab ${activeTab === 'contacts' ? 'active' : ''}`}
+        onClick={() => setActiveTab('contacts')}
+        type="button"
+      >
+        <Users size={14} />
+        <span>通讯录</span>
+      </button>
+      <button
+        className={`export-tab ${activeTab === 'moments' ? 'active' : ''}`}
+        onClick={() => setActiveTab('moments')}
+        type="button"
+      >
+        <Camera size={14} />
+        <span>朋友圈</span>
+      </button>
+    </div>
+  )
+
   return (
     <div className="export-page">
       {/* 聊天记录导出 */}
@@ -722,6 +717,7 @@ function ExportPage() {
           <div className="settings-panel">
             <div className="panel-header">
               <h2>导出设置</h2>
+              {renderExportTabs()}
             </div>
 
             <div className="settings-content">
@@ -930,6 +926,7 @@ function ExportPage() {
           <div className="settings-panel">
             <div className="panel-header">
               <h2>导出设置</h2>
+              {renderExportTabs()}
             </div>
 
             <div className="settings-content">
@@ -1107,6 +1104,7 @@ function ExportPage() {
           <div className="settings-panel">
             <div className="panel-header">
               <h2>导出设置</h2>
+              {renderExportTabs()}
             </div>
 
             <div className="settings-content">
