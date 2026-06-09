@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 import { useChat } from '@ai-sdk/react'
 import { isToolUIPart, type ChatStatus, type UIMessage } from 'ai'
 import { Button as HeroButton, Modal, Surface, Table } from '@heroui/react'
-import { AtSign, BarChart3, Braces, Brain, CheckIcon, Clock3, Copy, FileText, History, Image as ImageIcon, Info, PenLine, Quote, Search, SquarePen, Trash2, Users, Volume2, Wrench, X, Sparkles } from 'lucide-react'
+import { AtSign, BarChart3, Braces, Brain, CheckIcon, Clock3, Code2, Copy, FileText, History, Image as ImageIcon, Info, Link2, PenLine, Quote, Search, SquarePen, Table2, Trash2, Users, Volume2, Wrench, X, Sparkles } from 'lucide-react'
 import { Sources, SourcesContent, SourcesTrigger } from '@/components/ai-elements/sources'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import {
@@ -16,7 +16,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import { Message, MessageAction, MessageActions, MessageAttachment, MessageAttachments, MessageContent, MessageResponse } from '@/components/ai-elements/message'
+import { analyzeMessageRenderActivity, Message, MessageAction, MessageActions, MessageAttachment, MessageAttachments, MessageContent, MessageResponse, type MessageRenderActivity } from '@/components/ai-elements/message'
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -240,6 +240,47 @@ function renderChainLabel(label: string, active: boolean) {
   )
 }
 
+function renderOutputActivitySteps(activity: MessageRenderActivity, isStreaming: boolean) {
+  const steps: Array<{ key: string; icon: typeof BarChart3; label: string; doneLabel: string; active: boolean }> = []
+  if (activity.hasChart || activity.pendingChart) {
+    steps.push({
+      key: 'chart',
+      icon: BarChart3,
+      label: '正在生成图表',
+      doneLabel: '已生成图表',
+      active: isStreaming,
+    })
+  }
+  if (activity.hasTable || activity.pendingTable) {
+    steps.push({
+      key: 'table',
+      icon: Table2,
+      label: '正在整理表格',
+      doneLabel: '已整理表格',
+      active: isStreaming,
+    })
+  }
+  if (activity.hasCode || activity.pendingCode) {
+    steps.push({
+      key: 'code',
+      icon: Code2,
+      label: '正在生成代码块',
+      doneLabel: '已生成代码块',
+      active: isStreaming,
+    })
+  }
+  if (activity.hasLink || activity.pendingLink) {
+    steps.push({
+      key: 'link',
+      icon: Link2,
+      label: '正在处理链接',
+      doneLabel: activity.linkCount > 0 ? `已处理链接 ${activity.linkCount} 条` : '已处理链接',
+      active: isStreaming && (activity.pendingLink || activity.hasLink),
+    })
+  }
+  return steps
+}
+
 function formatElapsed(ms: number) {
   return `${Math.round(ms / 100) / 10}s`
 }
@@ -359,7 +400,7 @@ function SubAgentProgressPanel({ events, task }: { events: AgentProgressEvent[];
       {task && (
         <div className="mb-2 rounded-(--agent-radius,12px) bg-muted/50 px-2 py-1.5 text-muted-foreground">
           <div className="mb-0.5 text-[11px] text-foreground">委托任务</div>
-          <div className="line-clamp-3 whitespace-pre-wrap break-words">{task}</div>
+          <div className="line-clamp-3 whitespace-pre-wrap wrap-break-word">{task}</div>
         </div>
       )}
       <div className="mb-2 flex flex-wrap gap-1">
@@ -2014,6 +2055,11 @@ export default function AgentPage() {
               const isReasoningStreaming = isLastMessage && status === 'streaming' && lastPart?.type === 'reasoning'
               const chainActive = isLastMessage && busy
               const assistantText = message.role === 'assistant' ? messageTextOf(message) : ''
+              const assistantTextStreaming = message.role === 'assistant' && isLastMessage && status === 'streaming'
+              const outputActivity = message.role === 'assistant'
+                ? analyzeMessageRenderActivity(assistantText, assistantTextStreaming)
+                : null
+              const outputActivitySteps = outputActivity ? renderOutputActivitySteps(outputActivity, assistantTextStreaming) : []
               const userDisplay = message.role === 'user' ? getUserMessageDisplay(message.parts) : null
               const persistedSubAgentEvents = message.role === 'assistant' ? readSubAgentProgressFromMessage(message) : []
               const subAgentEventsForMessage = message.role === 'assistant'
@@ -2023,7 +2069,7 @@ export default function AgentPage() {
                 <Message from={message.role} key={message.id}>
                   {userDisplay && <UserMessageMentions mentions={userDisplay.mentions} />}
                   <MessageContent>
-                    {chainParts.length > 0 && (
+                    {(chainParts.length > 0 || outputActivitySteps.length > 0) && (
                       <MessageChainOfThought active={chainActive}>
                         {chainParts.map((part, index) => {
                           if (part.type === 'reasoning') {
@@ -2077,13 +2123,28 @@ export default function AgentPage() {
                             </ChainOfThoughtStep>
                           )
                         })}
+                        {outputActivitySteps.map((step) => {
+                          const Icon = step.icon
+                          return (
+                            <ChainOfThoughtStep
+                              icon={Icon}
+                              key={`output-${step.key}`}
+                              label={renderChainLabel(step.active ? step.label : step.doneLabel, step.active)}
+                              status={step.active ? 'active' : 'complete'}
+                            />
+                          )
+                        })}
                       </MessageChainOfThought>
                     )}
                     {message.parts.map((part, index) => {
                       if (part.type === 'text') {
                         const displayText = userDisplay?.textByPartIndex.get(index) ?? part.text
                         if (!displayText) return null
-                        return <MessageResponse key={`text-${index}`}>{displayText}</MessageResponse>
+                        return (
+                          <MessageResponse isStreaming={assistantTextStreaming} key={`text-${index}`}>
+                            {displayText}
+                          </MessageResponse>
+                        )
                       }
                       if (part.type === 'file') {
                         return (
