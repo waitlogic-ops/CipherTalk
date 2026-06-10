@@ -1,8 +1,9 @@
-import { ipcMain } from 'electron'
+import { dialog, ipcMain } from 'electron'
 import type { MainProcessContext } from '../context'
 import {
   fetchPetManifest,
   getPetSpriteDataUrl,
+  importPetZip,
   installPet,
   listInstalledPets,
   removePet,
@@ -42,6 +43,22 @@ export function registerPetHandlers(ctx: MainProcessContext): void {
         ctx.broadcastToWindows('config:changed', { key: 'petCurrent', value: '' })
       }
       return { success: true }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 从本地压缩包导入宠物：弹文件选择框 → 解压校验 → 落到 userData/pets/
+  ipcMain.handle('pet:importZip', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '选择宠物压缩包',
+      properties: ['openFile'],
+      filters: [{ name: '宠物压缩包', extensions: ['zip'] }],
+    })
+    const zipPath = result.filePaths[0]
+    if (result.canceled || !zipPath) return { success: false, canceled: true }
+    try {
+      return { success: true, pet: importPetZip(zipPath) }
     } catch (error) {
       return { success: false, error: String(error) }
     }

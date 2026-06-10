@@ -927,6 +927,12 @@ export function createWindowManager(ctx: MainProcessContext): WindowManager {
       petWindow.once('ready-to-show', () => petWindow?.show())
       loadWindowRoute(ctx, petWindow, '/pet-window')
 
+      // 拖动时把窗口横坐标转发给渲染端，宠物按移动方向播跑/跳动画
+      petWindow.on('move', () => {
+        if (!petWindow || petWindow.isDestroyed()) return
+        petWindow.webContents.send('pet:windowMove', petWindow.getPosition()[0])
+      })
+
       petWindow.on('closed', () => {
         petWindow = null
       })

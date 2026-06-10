@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
+import AdmZip from 'adm-zip'
 
 /**
  * AI 宠物服务 —— 兼容 petdex 宠物包格式（同 Codex Pets）。
@@ -144,4 +145,62 @@ export function removePet(slug: string): void {
   if (!isValidSlug(slug)) throw new Error('无效的宠物 slug')
   const dir = path.join(petsDir(), slug)
   if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true })
+}
+
+type ZipEntry = { entryName: string; isDirectory: boolean; getData(): Buffer }
+type AdmZipReader = InstanceType<typeof AdmZip> & { getEntries(): ZipEntry[] }
+
+/** 把任意字符串归一成合法 slug（pet.json 没有 id 时用文件名兜底） */
+function slugify(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+  return slug || `pet-${Date.now().toString(36)}`
+}
+
+/**
+ * 从本地压缩包导入宠物（petdex 下载的 zip 或自制宠物包）。
+ * 包内任意层级找 pet.json + spritesheet.webp/png，校验后落到 userData/pets/<slug>/。
+ */
+export function importPetZip(zipPath: string): InstalledPet {
+  const zip = new AdmZip(zipPath) as AdmZipReader
+  const entries = zip.getEntries().filter((entry) => !entry.isDirectory)
+  if (entries.length === 0) throw new Error('压缩包是空的')
+
+  const baseName = (entry: ZipEntry) => entry.entryName.split('/').pop() ?? ''
+  const petJsonEntry = entries.find((entry) => baseName(entry) === 'pet.json')
+  const spriteEntry = entries.find((entry) => {
+    const name = baseName(entry).toLowerCase()
+    return name === 'spritesheet.webp' || name === 'spritesheet.png' || name === 'sprite.webp' || name === 'sprite.png'
+  })
+  if (!petJsonEntry) throw new Error('压缩包里找不到 pet.json')
+  if (!spriteEntry) throw new Error('压缩包里找不到精灵图（spritesheet.webp/png）')
+
+  const petJson = petJsonEntry.getData()
+  const spritesheet = spriteEntry.getData()
+  if (spritesheet.length === 0) throw new Error('精灵图是空文件')
+
+  let meta: { id?: unknown; displayName?: unknown; description?: unknown }
+  try {
+    meta = JSON.parse(petJson.toString('utf8'))
+  } catch {
+    throw new Error('pet.json 不是合法的 JSON')
+  }
+
+  const rawId = typeof meta.id === 'string' && meta.id.trim() ? meta.id.trim() : path.basename(zipPath, '.zip')
+  const slug = isValidSlug(rawId) ? rawId : slugify(rawId)
+  const ext = baseName(spriteEntry).toLowerCase().endsWith('.png') ? 'png' : 'webp'
+
+  const dir = path.join(petsDir(), slug)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'pet.json'), petJson)
+  fs.writeFileSync(path.join(dir, `spritesheet.${ext}`), spritesheet)
+
+  return {
+    slug,
+    displayName: typeof meta.displayName === 'string' && meta.displayName.trim() ? meta.displayName.trim() : slug,
+    description: typeof meta.description === 'string' ? meta.description : '',
+  }
 }

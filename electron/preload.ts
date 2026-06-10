@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     manifest: (force?: boolean) => ipcRenderer.invoke('pet:manifest', force) as Promise<{ success: boolean; pets?: Array<{ slug: string; displayName: string; kind?: string; submittedBy?: string; spritesheetUrl: string; petJsonUrl: string }>; error?: string }>,
     install: (slug: string) => ipcRenderer.invoke('pet:install', slug) as Promise<{ success: boolean; pet?: { slug: string; displayName: string; description: string }; error?: string }>,
     remove: (slug: string) => ipcRenderer.invoke('pet:remove', slug) as Promise<{ success: boolean; error?: string }>,
+    importZip: () => ipcRenderer.invoke('pet:importZip') as Promise<{ success: boolean; canceled?: boolean; pet?: { slug: string; displayName: string; description: string }; error?: string }>,
     getSprite: (slug: string) => ipcRenderer.invoke('pet:getSprite', slug) as Promise<{ success: boolean; dataUrl?: string; error?: string }>,
     setAgentState: (state: string) => ipcRenderer.send('pet:agentState', state),
     toggleDesktopWindow: (enabled: boolean) => ipcRenderer.invoke('pet:toggleDesktopWindow', enabled) as Promise<{ success: boolean }>,
@@ -52,6 +53,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const listener = (_: any, state: string) => callback(state)
       ipcRenderer.on('pet:agentState', listener)
       return () => { ipcRenderer.removeListener('pet:agentState', listener) }
+    },
+    onWindowMove: (callback: (x: number) => void) => {
+      const listener = (_: any, x: number) => callback(x)
+      ipcRenderer.on('pet:windowMove', listener)
+      return () => { ipcRenderer.removeListener('pet:windowMove', listener) }
     }
   },
 

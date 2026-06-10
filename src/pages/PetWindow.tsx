@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { useCurrentPetLoader } from '@/features/pets/PetContext'
 import { PetSprite } from '@/features/pets/PetSprite'
-import { PET_STATES, petStateForAgent, type PetAgentState, type PetStateId } from '@/features/pets/petStates'
+import { petStateForAgent, type PetAgentState, type PetStateId } from '@/features/pets/petStates'
+import { useIdleFlair } from '@/features/pets/useIdleFlair'
 
 /**
  * 桌面悬浮桌宠窗口（透明无边框，跟随 Agent 运行状态切动画）。
- * 整个窗口是拖拽区域，悬停时右上角出现关闭按钮。
+ * 整个窗口是拖拽区域，悬停时右上角出现关闭按钮；拖动时按方向播跑/跳动画。
  */
 export default function PetWindow() {
   const pet = useCurrentPetLoader()
   const [agentState, setAgentState] = useState<PetAgentState>('idle')
+  const [dragState, setDragState] = useState<PetStateId | null>(null)
 
   useEffect(() => {
     document.documentElement.style.background = 'transparent'
@@ -38,34 +40,40 @@ export default function PetWindow() {
     }
   }, [])
 
-  // 空闲彩蛋（Codex 同款）：待机时每隔 6~14 秒随机来一段小动作，播两圈后回到呼吸待机
-  const [flair, setFlair] = useState<PetStateId | null>(null)
+  // 拖动动作：一拖就锁定跑姿（默认原地跑），只在有明确水平位移时切左/右跑方向，
+  // 期间绝不切别的动作避免闪烁；停止移动 800ms 后才复原。
   useEffect(() => {
-    if (agentState !== 'idle') {
-      setFlair(null)
-      return
-    }
-    let flairTimer = 0
-    let resetTimer = 0
-    const FLAIR_STATES: PetStateId[] = ['waving', 'jumping', 'waiting', 'review']
-    const schedule = () => {
-      flairTimer = window.setTimeout(() => {
-        const next = FLAIR_STATES[Math.floor(Math.random() * FLAIR_STATES.length)]
-        setFlair(next)
-        resetTimer = window.setTimeout(() => {
-          setFlair(null)
-          schedule()
-        }, PET_STATES[next].durationMs * 2)
-      }, 6000 + Math.random() * 8000)
-    }
-    schedule()
+    let lastX: number | null = null
+    let settleTimer = 0
+    const off = window.electronAPI.pet.onWindowMove((x) => {
+      window.clearTimeout(settleTimer)
+      setDragState((current) => {
+        let next: PetStateId = current ?? 'running'
+        if (lastX !== null) {
+          const dx = x - lastX
+          if (dx > 2) next = 'running-right'
+          else if (dx < -2) next = 'running-left'
+          // |dx| ≤ 2：保持当前跑姿不变
+        }
+        return next
+      })
+      lastX = x
+      settleTimer = window.setTimeout(() => {
+        setDragState(null)
+        lastX = null
+      }, 800)
+    })
     return () => {
-      window.clearTimeout(flairTimer)
-      window.clearTimeout(resetTimer)
+      window.clearTimeout(settleTimer)
+      off()
     }
-  }, [agentState])
+  }, [])
 
-  const state: PetStateId = agentState === 'idle' && flair ? flair : petStateForAgent(agentState)
+  // 空闲彩蛋（Codex 同款）：待机且没在拖动时，不定时来一段随机小动作
+  const flair = useIdleFlair(agentState === 'idle' && dragState === null)
+
+  const state: PetStateId = dragState
+    ?? (agentState === 'idle' && flair ? flair : petStateForAgent(agentState))
 
   return (
     <div

@@ -52,6 +52,8 @@ import { Shimmer } from '@/components/ai-elements/shimmer'
 import { IpcChatTransport, type AgentModelConfig, type AgentProgressEvent, type AgentReasoningEffort, type AgentScope } from '@/features/aiagent/transport/ipcChatTransport'
 import { CurrentPetProvider, useCurrentPet } from '@/features/pets/PetContext'
 import { PetSprite } from '@/features/pets/PetSprite'
+import { petStateForAgent, type PetAgentState, type PetStateId } from '@/features/pets/petStates'
+import { useIdleFlair } from '@/features/pets/useIdleFlair'
 import * as configService from '@/services/config'
 
 const PROMPT_PRESETS = [
@@ -1390,19 +1392,16 @@ function messageTextOf(message: UIMessage): string {
     .trim()
 }
 
-/** AI 回复左下角的常驻宠物（未选宠物时不占位） */
-function MessageFooterPet() {
+/**
+ * Agent 页常驻宠物：空对话时在对话区中间迎接，有对话后驻守在最新一条 AI 回复的
+ * 操作栏（详情按钮右边）。跟随运行状态（跑/失败/挥手收尾），空闲时不定时随机小动作（含跑动）。
+ */
+function AgentCompanionPet({ state, centered = false, className }: { state: PetAgentState; centered?: boolean; className?: string }) {
   const pet = useCurrentPet()
+  const flair = useIdleFlair(Boolean(pet) && state === 'idle')
   if (!pet) return null
-  return (
-    <PetSprite
-      className="mr-1.5"
-      label={pet.displayName}
-      scale={0.14}
-      src={pet.spriteUrl}
-      state="idle"
-    />
-  )
+  const display: PetStateId = state === 'idle' && flair ? flair : petStateForAgent(state)
+  return <PetSprite className={className} label={pet.displayName} scale={centered ? 0.55 : 0.18} src={pet.spriteUrl} state={display} />
 }
 
 function MessageUsageStats({
@@ -1412,6 +1411,7 @@ function MessageUsageStats({
   copied,
   regenerating,
   speaking,
+  petState,
   onCopy,
   onOpenDetails,
   onRegenerate,
@@ -1423,6 +1423,7 @@ function MessageUsageStats({
   copied: boolean
   regenerating: boolean
   speaking: boolean
+  petState?: PetAgentState
   onCopy: () => void
   onOpenDetails: (data: AgentMessageMetadata) => void
   onRegenerate: () => void
@@ -1434,7 +1435,6 @@ function MessageUsageStats({
   return (
     <div className="mt-3 border-border/60 border-t pt-2 text-[11px] leading-5 text-muted-foreground">
       <div className="flex items-center">
-        <MessageFooterPet />
         <MessageActions className="shrink-0">
           <MessageAction
             disabled={!messageText}
@@ -1470,6 +1470,7 @@ function MessageUsageStats({
             <Info className="size-3.5" />
           </MessageAction>
         </MessageActions>
+        {petState !== undefined && <AgentCompanionPet className="ml-2" state={petState} />}
       </div>
     </div>
   )
@@ -1747,6 +1748,13 @@ export default function AgentPage() {
       isToolUIPart(part) && part.type.replace(/^tool-/, '') === 'delegate_analysis'
     ))
   }, [messages])
+  // 常驻宠物驻守在最新一条 AI 回复的操作栏里
+  const lastAssistantIndex = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return i
+    }
+    return -1
+  }, [messages])
   // 本次会话累计 token 用量（各助手消息 usage 求和），供输入框底部展示
   const conversationUsage = useMemo(() => {
     let input = 0
@@ -1778,18 +1786,25 @@ export default function AgentPage() {
   const [conversationRecords, setConversationRecords] = useState<AgentConversationRecord[]>([])
   const [recordPendingDelete, setRecordPendingDelete] = useState<AgentConversationRecord | null>(null)
   const [recordDeleting, setRecordDeleting] = useState(false)
-  // 把 Agent 运行状态广播给桌宠窗口：跑→run 动画，报错→failed，收尾→done(挥手)
+  // Agent 运行状态 → 宠物动作：跑→run，报错→failed，收尾→done(挥手 2.6s)。
+  // 同一份状态既驱动页面常驻宠物，也广播给桌宠窗口。
   const petAgentState = busy ? 'running' : agentNotice ? 'failed' : 'idle'
+  const [companionPetState, setCompanionPetState] = useState<PetAgentState>('idle')
   const petPrevBusyRef = useRef(false)
   useEffect(() => {
     if (petAgentState === 'idle' && petPrevBusyRef.current) {
       window.electronAPI.pet?.setAgentState('done')
-      const timer = window.setTimeout(() => window.electronAPI.pet?.setAgentState('idle'), 2600)
+      setCompanionPetState('done')
+      const timer = window.setTimeout(() => {
+        window.electronAPI.pet?.setAgentState('idle')
+        setCompanionPetState('idle')
+      }, 2600)
       petPrevBusyRef.current = false
       return () => window.clearTimeout(timer)
     }
     petPrevBusyRef.current = petAgentState === 'running'
     window.electronAPI.pet?.setAgentState(petAgentState)
+    setCompanionPetState(petAgentState)
   }, [petAgentState])
 
   const appendMentionTargets = useCallback((items: MentionTarget[]) => {
@@ -2418,11 +2433,18 @@ export default function AgentPage() {
       </div>
       <Conversation className="min-h-0 flex-1">
         <ConversationAutoScroll enabled={shouldAnchorLatestUser} trigger={latestUserMessageId} />
-        <ConversationContent className="mx-auto w-full min-w-80 max-w-[82%] pt-4 pb-12">
+        <ConversationContent
+          className={
+            messages.length === 0
+              ? 'mx-auto h-full w-full min-w-80 max-w-[82%] pt-4 pb-12'
+              : 'mx-auto w-full min-w-80 max-w-[82%] pt-4 pb-12'
+          }
+        >
           {messages.length === 0 ? (
             <ConversationEmptyState
               title="开始查询聊天记录"
               description="输入问题后，助手会基于本地聊天数据回答"
+              icon={<AgentCompanionPet centered state={companionPetState} />}
             />
           ) : (
             messages.map((message, messageIndex) => {
@@ -2554,6 +2576,7 @@ export default function AgentPage() {
                         copied={copiedMessageId === message.id}
                         metadata={message.metadata}
                         messageText={assistantDisplayText}
+                        petState={messageIndex === lastAssistantIndex ? companionPetState : undefined}
                         onCopy={() => { void handleCopyAssistantMessage(message.id, assistantDisplayText) }}
                         onOpenDetails={setUsageDetailsModal}
                         onRegenerate={() => handleRegenerateAssistantMessage(messageIndex)}

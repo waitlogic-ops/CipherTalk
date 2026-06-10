@@ -49,8 +49,6 @@ import {
 } from "./artifact";
 import { CodeBlock } from "./code-block";
 import { Terminal, TerminalContent } from "./terminal";
-import { useCurrentPet } from "@/features/pets/PetContext";
-import { PetSprite } from "@/features/pets/PetSprite";
 import {
   WebPreview,
   WebPreviewBody,
@@ -1141,26 +1139,6 @@ function PixelRunnerFrame({ className, frame }: { className?: string; frame: str
 }
 
 export function MessageStreamingIndicator({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  const pet = useCurrentPet();
-
-  // 选了宠物就由宠物陪跑，没选时回退内置像素小人
-  if (pet) {
-    return (
-      <div
-        aria-label="AI 正在回复"
-        className={cn(
-          "mt-1.5 inline-flex w-fit items-center gap-1.5 text-muted-foreground text-xs",
-          className
-        )}
-        role="status"
-        {...props}
-      >
-        <PetSprite label={`${pet.displayName} 努力中`} scale={0.14} src={pet.spriteUrl} state="running" />
-        <span>回复中...</span>
-      </div>
-    );
-  }
-
   return (
     <div
       aria-label="AI 正在回复"
