@@ -267,17 +267,33 @@ function TextBubble({ message, session, isSent, onContextMenu }: TextBubbleProps
           const year = msgDate.getFullYear()
           const month = String(msgDate.getMonth() + 1).padStart(2, '0')
           const dateFolder = `${year}-${month}`
-          const filePath = `${wechatDir}\\${wxid}\\msg\\file\\${dateFolder}\\${fileName}`
+          const isWin = window.navigator.platform.toLowerCase().includes('win')
+          const sep = isWin ? '\\' : '/'
 
-          try {
-            await window.electronAPI.shell.showItemInFolder(filePath)
-          } catch (err) {
-            console.warn('无法定位到具体文件，尝试打开文件夹:', err)
-            const fileDir = `${wechatDir}\\${wxid}\\msg\\file\\${dateFolder}`
-            const result = await window.electronAPI.shell.openPath(fileDir)
-            if (result) {
-              console.warn('无法打开月份文件夹，尝试打开上级目录')
-              await window.electronAPI.shell.openPath(`${wechatDir}\\${wxid}\\msg\\file`)
+          const candidates = [
+            `${wechatDir}${sep}${wxid}${sep}msg${sep}file${sep}${dateFolder}${sep}${fileName}`,
+            `${wechatDir}${sep}${wxid}${sep}FileStorage${sep}File${sep}${dateFolder}${sep}${fileName}`,
+            `${wechatDir}${sep}FileStorage${sep}File${sep}${dateFolder}${sep}${fileName}`,
+          ]
+
+          let opened = false
+          for (const filePath of candidates) {
+            try {
+              await window.electronAPI.shell.showItemInFolder(filePath)
+              opened = true
+              break
+            } catch { /* try next */ }
+          }
+
+          if (!opened) {
+            const fileDir = `${wechatDir}${sep}${wxid}${sep}msg${sep}file${sep}${dateFolder}`
+            try {
+              const result = await window.electronAPI.shell.openPath(fileDir)
+              if (result) {
+                await window.electronAPI.shell.openPath(`${wechatDir}${sep}${wxid}${sep}msg${sep}file`)
+              }
+            } catch {
+              await window.electronAPI.shell.openPath(wechatDir)
             }
           }
         } catch (error) {

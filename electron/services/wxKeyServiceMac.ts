@@ -164,12 +164,14 @@ export class WxKeyServiceMac {
     try {
       this.koffi = require('koffi')
       const dylibPath = this.getDylibPath()
+      console.log('[WxKeyServiceMac] 加载 dylib:', dylibPath)
       this.lib = this.koffi.load(dylibPath)
       this.GetDbKey = this.lib.func('const char* GetDbKey()')
       this.ListWeChatProcesses = this.lib.func('const char* ListWeChatProcesses()')
       this.initialized = true
       return true
-    } catch {
+    } catch (e: any) {
+      console.error('[WxKeyServiceMac] 初始化失败:', e?.message || e)
       return false
     }
   }
@@ -434,6 +436,14 @@ export class WxKeyServiceMac {
     onProgress?: (message: string) => void
   ): Promise<ImageKeyResult> {
     try {
+      const sipStatus = await this.checkSipStatus()
+      if (sipStatus.enabled) {
+        return {
+          success: false,
+          error: 'SIP (系统完整性保护) 已开启，内存扫描需要关闭 SIP 后重试'
+        }
+      }
+
       onProgress?.('正在查找图片模板文件...')
       let result = await this.findTemplateData(userDir, 32)
       let { ciphertext, xorKey } = result
@@ -861,6 +871,7 @@ export class WxKeyServiceMac {
         this.koffi = require('koffi')
       }
 
+      console.log('[WxKeyServiceMac] 加载 Mach API: /usr/lib/libSystem.B.dylib')
       this.libSystem = this.koffi.load('/usr/lib/libSystem.B.dylib')
       this.machTaskSelf = this.libSystem.func('mach_task_self', 'uint32', [])
       this.taskForPid = this.libSystem.func('task_for_pid', 'int', ['uint32', 'int', this.koffi.out('uint32*')])
@@ -882,8 +893,8 @@ export class WxKeyServiceMac {
       ])
       this.machPortDeallocate = this.libSystem.func('mach_port_deallocate', 'int', ['uint32', 'uint32'])
       return true
-    } catch (e) {
-      console.error('[WxKeyServiceMac] 初始化 Mach API 失败:', e)
+    } catch (e: any) {
+      console.error('[WxKeyServiceMac] 初始化 Mach API 失败:', e?.message || e)
       return false
     }
   }
@@ -932,6 +943,7 @@ export class WxKeyServiceMac {
     const attachKr = this.taskForPid(selfTask, pid, taskBuf)
     const task = taskBuf.readUInt32LE(0)
     if (attachKr !== KERN_SUCCESS || !task) {
+      console.error(`[WxKeyServiceMac] task_for_pid 失败: kr=${attachKr}, task=${task}, pid=${pid}（可能需要关闭 SIP 或授予调试权限）`)
       return null
     }
 

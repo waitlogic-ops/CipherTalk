@@ -311,6 +311,20 @@ class VideoService {
       join(cachePath, 'databases', wxid, 'hardlink.db')
     ])
 
+    // Mac: 动态扫描 xwechat_files 下各子目录的 hardlink 路径
+    if (process.platform === 'darwin') {
+      const home = require('os').homedir()
+      const xwechatRoot = join(home, 'Library', 'Containers', 'com.tencent.xinWeChat', 'Data', 'Documents', 'xwechat_files')
+      if (existsSync(xwechatRoot)) {
+        try {
+          const entries = readdirSync(xwechatRoot)
+          for (const entry of entries) {
+            possiblePaths.add(join(xwechatRoot, entry, 'db_storage', 'hardlink'))
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
     if (dbPath) {
       const baseCandidates = new Set<string>([
         dbPath,

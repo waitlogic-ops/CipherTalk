@@ -11,7 +11,16 @@ type WindowControlsOverlayPadding = {
   right: number
 }
 
-const DEFAULT_PLATFORM: WindowPlatform = 'win32'
+function detectPlatform(): WindowPlatform {
+  if (typeof navigator !== 'undefined') {
+    const ua = navigator.platform.toLowerCase()
+    if (ua.includes('mac')) return 'darwin'
+    if (ua.includes('linux')) return 'linux'
+  }
+  return 'win32'
+}
+
+const DEFAULT_PLATFORM: WindowPlatform = detectPlatform()
 const WINDOW_CHROME_HEIGHT = '40px'
 
 const WINDOW_CHROME_METRICS: Record<WindowPlatform, WindowChromeMetrics> = {

@@ -279,7 +279,12 @@ if (gotSingleInstanceLock) {
     startNightlyMemoryConsolidation(ctx)
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
+      const mainWindow = ctx.getMainWindow()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore()
+        mainWindow.show()
+        mainWindow.focus()
+      } else {
         ctx.getWindowManager().createMainWindow()
         ctx.getWindowManager().createTray()
       }

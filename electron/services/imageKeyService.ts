@@ -2,6 +2,9 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as crypto from 'crypto'
 
+// Windows-only module: Mac 使用 wxKeyServiceMac.ts 的 Mach API 替代
+const IS_WIN = process.platform === 'win32'
+
 // Windows API 常量
 const PROCESS_ALL_ACCESS = 0x1F0FFF
 const MEM_COMMIT = 0x1000
@@ -21,6 +24,7 @@ let ReadProcessMemory: any = null
 let MEMORY_BASIC_INFORMATION: any = null
 
 function ensureKernel32(): boolean {
+  if (!IS_WIN) return false
   if (kernel32) return true
   
   try {

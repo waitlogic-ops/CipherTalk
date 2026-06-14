@@ -70,6 +70,16 @@ export class WcdbCore {
   }
 
   private prepareWindowsDllSearchPath(libraryPath: string): { success: boolean; error?: string } {
+    if (process.platform === 'darwin') {
+      const dylibDir = dirname(libraryPath)
+      const currentDyld = process.env.DYLD_LIBRARY_PATH || ''
+      if (!currentDyld.includes(dylibDir)) {
+        process.env.DYLD_LIBRARY_PATH = dylibDir + (currentDyld ? ':' + currentDyld : '')
+        console.log(`[wcdbCore] 设置 DYLD_LIBRARY_PATH: ${dylibDir}`)
+      }
+      return { success: true }
+    }
+
     if (process.platform !== 'win32') return { success: true }
 
     const wcdbCorePath = this.getWindowsCoreLibraryPath()

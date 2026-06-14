@@ -77,11 +77,13 @@ function loadAddon(): NativeAddon | null {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const addon = require(candidate) as NativeAddon
       if (addon && typeof addon.decryptDatNative === 'function') {
+        console.log(`[nativeImageDecrypt] 加载成功: ${candidate}`)
         cachedAddon = addon
         return addon
       }
-    } catch {
-      // try next candidate
+      console.warn(`[nativeImageDecrypt] 文件存在但缺少 decryptDatNative 函数: ${candidate}`)
+    } catch (e: any) {
+      console.error(`[nativeImageDecrypt] 加载失败: ${candidate}`, e?.message || e)
     }
   }
 
@@ -143,13 +145,17 @@ export function decryptDatViaNative(
   try {
     const result = addon.decryptDatNative(inputPath, xorKey, aesKey)
     const isWxgf = Boolean(result?.isWxgf ?? result?.is_wxgf)
-    if (!result || !Buffer.isBuffer(result.data)) return null
+    if (!result || !Buffer.isBuffer(result.data)) {
+      console.warn(`[nativeImageDecrypt] 解密返回无效数据: ${inputPath}`)
+      return null
+    }
     const rawExt = typeof result.ext === 'string' && result.ext.trim()
       ? result.ext.trim().toLowerCase()
       : ''
     const ext = rawExt ? (rawExt.startsWith('.') ? rawExt : `.${rawExt}`) : ''
     return { data: result.data, ext, isWxgf }
-  } catch {
+  } catch (e: any) {
+    console.error(`[nativeImageDecrypt] 解密异常: ${inputPath}`, e?.message || e)
     return null
   }
 }

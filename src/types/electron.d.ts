@@ -1250,7 +1250,7 @@ export interface ElectronAPI {
   embedding: {
     getConfig: () => Promise<{ success: boolean; config?: EmbeddingConfig; error?: string }>
     setConfig: (patch: Partial<EmbeddingConfig>) => Promise<{ success: boolean; config?: EmbeddingConfig; error?: string }>
-    test: (cfg: EmbeddingConfig) => Promise<{ success: boolean; dimension?: number; error?: string }>
+    test: (cfg: EmbeddingConfig) => Promise<{ success: boolean; dimension?: number; error?: string; dimensionMismatch?: string }>
     sessionStatus: (sessionId: string) => Promise<{ success: boolean; enabled?: boolean; count?: number; store?: EmbeddingVectorStoreInfo; error?: string }>
     buildSession: (sessionId: string) => Promise<{ success: boolean; indexed?: number; error?: string }>
     onBuildProgress: (callback: (progress: EmbeddingBuildProgress) => void) => () => void
