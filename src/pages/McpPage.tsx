@@ -24,7 +24,7 @@ import {
   Typography,
 } from '@heroui/react'
 import JSZip from 'jszip'
-import { Copy, Download, Save, Plus, Trash2, Eye, Pencil, Plug, Unplug, Upload, FileCode, X, Database, RefreshCw } from 'lucide-react'
+import { Copy, Download, Save, Plus, Trash2, Eye, Pencil, Plug, Unplug, Upload, FileCode, X } from 'lucide-react'
 import * as configService from '../services/config'
 
 type McpLaunchConfig = {
@@ -60,29 +60,6 @@ type McpToolInfo = {
   name: string
   description?: string
   inputSchema?: unknown
-}
-
-type AgentResourceKind = 'skill' | 'mcp_tool'
-
-type AgentResourceStatus = {
-  enabled: boolean
-  kind: AgentResourceKind
-  count: number
-  currentCount: number
-  staleCount: number
-  store?: {
-    dimensions?: number[]
-    updatedAtMs?: number | null
-  }
-}
-
-type AgentResourceBuildProgress = {
-  kind: AgentResourceKind
-  stage: 'loading' | 'embedding' | 'done'
-  current: number
-  total: number
-  indexed: number
-  message: string
 }
 
 type TopTab = 'server' | 'integration'
@@ -228,18 +205,6 @@ function McpPage() {
 
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([])
-  const [resourceStatuses, setResourceStatuses] = useState<Record<AgentResourceKind, AgentResourceStatus | null>>({
-    skill: null,
-    mcp_tool: null,
-  })
-  const [resourceBusy, setResourceBusy] = useState<Record<AgentResourceKind, boolean>>({
-    skill: false,
-    mcp_tool: false,
-  })
-  const [resourceProgress, setResourceProgress] = useState<Record<AgentResourceKind, AgentResourceBuildProgress | null>>({
-    skill: null,
-    mcp_tool: null,
-  })
 
   const [skillDialog, setSkillDialog] = useState<SkillDialogState>(null)
   const [skillContent, setSkillContent] = useState('')
@@ -284,18 +249,12 @@ function McpPage() {
 
   const loadIntegrationData = useCallback(async () => {
     try {
-      const [skillList, serverList, skillStatus, mcpStatus] = await Promise.all([
+      const [skillList, serverList] = await Promise.all([
         window.electronAPI.skillManager.list(),
         window.electronAPI.mcpClient.listStatuses(),
-        window.electronAPI.embedding.agentResourceStatus('skill'),
-        window.electronAPI.embedding.agentResourceStatus('mcp_tool'),
       ])
       setSkills(skillList)
       setMcpServers(serverList)
-      setResourceStatuses({
-        skill: skillStatus.success && skillStatus.status ? skillStatus.status : null,
-        mcp_tool: mcpStatus.success && mcpStatus.status ? mcpStatus.status : null,
-      })
     } catch (e) {
       console.error('加载集成数据失败:', e)
     }
@@ -304,14 +263,6 @@ function McpPage() {
   useEffect(() => {
     if (topTab === 'integration') void loadIntegrationData()
   }, [topTab, loadIntegrationData])
-
-  useEffect(() => {
-    return window.electronAPI.embedding.onAgentResourceBuildProgress((payload) => {
-      const progress = payload as AgentResourceBuildProgress
-      if (progress?.kind !== 'skill' && progress?.kind !== 'mcp_tool') return
-      setResourceProgress(prev => ({ ...prev, [progress.kind]: progress }))
-    })
-  }, [])
 
   const mcpServerJsonTemplate = useMemo(() => JSON.stringify({
     mcpServers: { ciphertalk: { command: launchConfig.command, args: launchConfig.args, cwd: launchConfig.cwd } },
@@ -522,85 +473,6 @@ function McpPage() {
     const result = await window.electronAPI.mcpClient.deleteConfig(name)
     toast[result.success ? 'success' : 'danger'](result.success ? `服务器 "${name}" 已删除` : (result.error || '删除失败'))
     if (result.success) void loadIntegrationData()
-  }
-
-  const buildAgentResources = async (kind: AgentResourceKind) => {
-    if (resourceBusy[kind]) return
-    const currentStatus = resourceStatuses[kind]
-    if (currentStatus && !currentStatus.enabled) {
-      toast.danger('未启用或未配置嵌入模型，请先在设置中配置并启用')
-      return
-    }
-    setResourceBusy(prev => ({ ...prev, [kind]: true }))
-    setResourceProgress(prev => ({
-      ...prev,
-      [kind]: { kind, stage: 'loading', current: 0, total: 0, indexed: currentStatus?.count || 0, message: '准备向量化' },
-    }))
-    try {
-      const result = await window.electronAPI.embedding.buildAgentResources(kind)
-      toast[result.success ? 'success' : 'danger'](
-        result.success
-          ? `${kind === 'skill' ? 'Skills' : 'MCP 工具'}向量化完成，当前索引 ${result.indexed ?? 0} 项`
-          : (result.error || '向量化失败')
-      )
-      await loadIntegrationData()
-    } catch {
-      toast.danger('向量化失败')
-    } finally {
-      setResourceBusy(prev => ({ ...prev, [kind]: false }))
-    }
-  }
-
-  const renderResourceVectorPanel = (kind: AgentResourceKind) => {
-    const status = resourceStatuses[kind]
-    const progress = resourceProgress[kind]
-    const busy = resourceBusy[kind]
-    const isMcp = kind === 'mcp_tool'
-    const label = isMcp ? 'MCP 工具向量' : 'Skills 向量'
-    const actionLabel = isMcp ? '向量化 MCP 工具' : '向量化 Skills'
-    const empty = Boolean(status?.enabled && status.currentCount === 0)
-    const disabled = busy || !status?.enabled || empty
-    const dimensions = status?.store?.dimensions?.length ? ` · ${status.store.dimensions.join('/')} 维` : ''
-    const detail = !status
-      ? '正在读取向量状态'
-      : !status.enabled
-        ? '未启用嵌入模型'
-        : status.currentCount === 0
-          ? (isMcp ? '暂无可向量化的已连接只读 MCP 工具' : '暂无可向量化的 Skills')
-          : status.staleCount > 0
-            ? `已向量化 ${status.count}/${status.currentCount}，待更新 ${status.staleCount}${dimensions}`
-            : `已向量化 ${status.count}/${status.currentCount}${dimensions}`
-    const progressText = busy && progress
-      ? `${progress.message}${progress.total > 0 ? ` ${progress.current}/${progress.total}` : ''}`
-      : detail
-
-    return (
-      <Surface variant="transparent" className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Database size={16} />
-            <Typography type="body-sm" weight="semibold">{label}</Typography>
-            {status?.enabled ? (
-              <Chip color={status.staleCount > 0 ? 'warning' : 'success'} variant="secondary" size="sm">
-                {status.staleCount > 0 ? '待更新' : '已就绪'}
-              </Chip>
-            ) : (
-              <Chip color="warning" variant="secondary" size="sm">未启用</Chip>
-            )}
-          </div>
-          <Description>{progressText}</Description>
-        </div>
-        <Button
-          variant="tertiary"
-          size="sm"
-          isDisabled={disabled}
-          onPress={() => void buildAgentResources(kind)}
-        >
-          {busy ? <Spinner size="sm" color="current" /> : <RefreshCw size={14} />}
-          {busy ? '向量化中...' : actionLabel}
-        </Button>
-      </Surface>
-    )
   }
 
   const renderStatusChip = (status: string) => {
@@ -1084,7 +956,6 @@ function McpPage() {
                     </Alert.Content>
                   </Alert>
                 )}
-                {renderResourceVectorPanel('mcp_tool')}
                 {serverPanelOpen && !editingServer && renderServerForm()}
                 {mcpServers.map(renderServerRow)}
               </section>
@@ -1116,12 +987,7 @@ function McpPage() {
                       <Alert.Description>暂无 Skills，可先下载模板后导入 zip。</Alert.Description>
                     </Alert.Content>
                   </Alert>
-                ) : (
-                  <>
-                    {renderResourceVectorPanel('skill')}
-                    {skills.map(skill => renderSkillRow(skill, 'internal'))}
-                  </>
-                )}
+                ) : skills.map(skill => renderSkillRow(skill, 'internal'))}
               </section>
             </div>
           </Tabs.Panel>

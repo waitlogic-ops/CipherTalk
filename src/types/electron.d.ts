@@ -80,38 +80,6 @@ export interface EmbeddingVectorStoreInfo {
   dimensions: number[]
 }
 
-export type AgentResourceKind = 'skill' | 'mcp_tool'
-
-export interface AgentResourceBuildProgress {
-  kind: AgentResourceKind
-  stage: 'loading' | 'embedding' | 'done'
-  current: number
-  total: number
-  indexed: number
-  message: string
-}
-
-export interface AgentResourceVectorStoreInfo {
-  dbPath: string
-  exists: boolean
-  sizeBytes: number
-  updatedAtMs: number | null
-  count: number
-  storedCount: number
-  currentCount: number
-  staleCount: number
-  dimensions: number[]
-}
-
-export interface AgentResourceStatus {
-  enabled: boolean
-  kind: AgentResourceKind
-  count: number
-  currentCount: number
-  staleCount: number
-  store: AgentResourceVectorStoreInfo
-}
-
 export interface ImageListItem {
   imagePath: string
   liveVideoPath?: string
@@ -1230,10 +1198,7 @@ export interface ElectronAPI {
     test: (cfg: EmbeddingConfig) => Promise<{ success: boolean; dimension?: number; error?: string }>
     sessionStatus: (sessionId: string) => Promise<{ success: boolean; enabled?: boolean; count?: number; store?: EmbeddingVectorStoreInfo; error?: string }>
     buildSession: (sessionId: string) => Promise<{ success: boolean; indexed?: number; error?: string }>
-    agentResourceStatus: (kind: AgentResourceKind) => Promise<{ success: boolean; status?: AgentResourceStatus; error?: string }>
-    buildAgentResources: (kind: AgentResourceKind) => Promise<{ success: boolean; indexed?: number; error?: string }>
     onBuildProgress: (callback: (progress: EmbeddingBuildProgress) => void) => () => void
-    onAgentResourceBuildProgress: (callback: (progress: AgentResourceBuildProgress) => void) => () => void
   }
   rerank: {
     getConfig: () => Promise<{ success: boolean; config?: RerankConfig; error?: string }>

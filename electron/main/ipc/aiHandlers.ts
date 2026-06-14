@@ -9,9 +9,7 @@ import type { PersonaNotes } from '../../services/agent/persona/personaTypes'
 /** 进行中的 agent 运行：runId → AbortController，用于取消。 */
 const agentAborters = new Map<string, AbortController>()
 const AGENT_RUN_PROXY_CACHE_TTL_MS = 5 * 60 * 1000
-// 准备阶段网络调用超时：超时直接走降级路径（不影响正确性），别让慢服务拖住首包。
-// 嵌入请求通常比 rerank 慢，单独给更宽松预算，避免频繁无意义降级。
-const AGENT_PREP_VECTOR_TIMEOUT_MS = 3000
+// 准备阶段重排超时：超时直接走降级路径（不影响正确性），别让慢服务拖住首包。
 const AGENT_PREP_RERANK_TIMEOUT_MS = 800
 const AGENT_PREP_PROGRESS_TITLE = '大模型准备中'
 
@@ -137,6 +135,36 @@ function errorToLogData(error: unknown): Record<string, unknown> {
   return { message: String(error) }
 }
 
+function selectionTokens(value: string): Set<string> {
+  const normalized = value.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase()
+  const tokens = new Set<string>()
+  for (const match of normalized.matchAll(/[a-z0-9][a-z0-9_-]{1,}/g)) {
+    tokens.add(match[0].replace(/[_-]+/g, ''))
+    for (const part of match[0].split(/[_-]+/)) {
+      if (part.length >= 2) tokens.add(part)
+    }
+  }
+  for (const match of value.matchAll(/[\u4e00-\u9fff]+/g)) {
+    const text = match[0]
+    for (let i = 0; i < text.length - 1; i += 1) tokens.add(text.slice(i, i + 2))
+    if (text.length === 1) tokens.add(text)
+  }
+  return tokens
+}
+
+function scoreNameDescription(query: string, parts: Array<{ text: string; weight: number }>): number {
+  const queryTokens = selectionTokens(query)
+  if (queryTokens.size === 0) return 0
+  let score = 0
+  for (const part of parts) {
+    const tokens = selectionTokens(part.text)
+    for (const token of queryTokens) {
+      if (tokens.has(token)) score += part.weight * (token.length >= 4 ? 2 : 1)
+    }
+  }
+  return score
+}
+
 export function registerAiHandlers(ctx: MainProcessContext): void {
   // ========= AI Agent（跑在独立 utilityProcess 子进程，主进程仅做 broker）=========
   ipcMain.handle('agent:run', async (event, payload: {
@@ -241,7 +269,6 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
       const { buildReadOnlyMcpToolDescriptors } = await import('../../services/agent/mcpToolPolicy')
       const { skillManagerService } = await import('../../services/skillManagerService')
       const { rerankCandidates } = await import('../../services/ai/rerankService')
-      const { agentResourceVectorService } = await import('../../services/agent/agentResourceVectorService')
       const {
         fingerprintMcpToolSchemas,
         fingerprintSkills,
@@ -263,8 +290,8 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
       markPerf('加载上下文服务模块', `只读 MCP 工具 ${readOnlyMcpTools.length} 个`)
       stage = 'select_tools_and_skills'
       sendPrepProgress()
-      // MCP 工具筛选+重排 与 技能选择 互相独立，并行执行；
-      // 两路对同一问题的查询嵌入由 embedQuery 的在飞缓存合并成一次请求。
+      // MCP 工具筛选+重排 与 技能选择 互相独立，并行执行；运行期不再使用向量，
+      // 只用名称和简介做轻量候选选择，避免 embedding 请求拖慢或误召回。
       const selectMcpToolsTask = async () => {
         if (readOnlyMcpTools.length === 0) {
           return {
@@ -283,39 +310,19 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
             mcpCacheHit: true,
           }
         }
-        let candidates = readOnlyMcpTools
-        if (agentResourceVectorService.isReady()) {
-          try {
-            const mcpVectorStatus = agentResourceVectorService.getMcpStatus(readOnlyMcpTools)
-            const canUseMcpVector = mcpVectorStatus.enabled
-              && mcpVectorStatus.currentCount > 0
-              && mcpVectorStatus.count === mcpVectorStatus.currentCount
-              && mcpVectorStatus.staleCount === 0
-            if (canUseMcpVector) {
-              const vectorMcpTools = await agentResourceVectorService.searchMcpTools(
-                lastUserText,
-                readOnlyMcpTools,
-                24,
-                undefined,
-                { requireCurrent: true, queryTimeoutMs: AGENT_PREP_VECTOR_TIMEOUT_MS, queryMaxRetries: 0 },
-              )
-              if (vectorMcpTools.length > 0) candidates = vectorMcpTools
-            } else if (mcpVectorStatus.currentCount > 0) {
-              logger?.warn('AIAgent', 'MCP 工具向量未就绪，跳过请求期向量补建', {
-                ...baseRunData,
-                currentCount: mcpVectorStatus.currentCount,
-                indexedCount: mcpVectorStatus.count,
-                staleCount: mcpVectorStatus.staleCount,
-              })
-            }
-          } catch (error) {
-            console.warn('[agent:run] MCP vector candidate selection failed, fallback to all read-only tools:', error)
-            logger?.warn('AIAgent', 'MCP 工具向量候选选择失败，回退到全部只读工具', {
-              ...baseRunData,
-              ...errorToLogData(error),
-            })
-          }
-        }
+        const scoredCandidates = readOnlyMcpTools
+          .map((tool) => ({
+            tool,
+            score: scoreNameDescription(lastUserText, [
+              { text: `${tool.serverName} ${tool.toolName} ${tool.name}`, weight: 3 },
+              { text: tool.description || '', weight: 2 },
+            ]),
+          }))
+          .filter((item) => item.score > 0)
+          .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name))
+        const candidates = scoredCandidates.length > 0
+          ? scoredCandidates.slice(0, 24).map((item) => item.tool)
+          : readOnlyMcpTools
         if (candidates.length === 0) {
           setCachedMcpSelection(lastUserText, mcpToolVersion, [])
           return {
@@ -333,7 +340,6 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
               `MCP ${tool.serverName}/${tool.toolName}`,
               tool.name,
               tool.description || '',
-              tool.inputSchema ? JSON.stringify(tool.inputSchema).slice(0, 1000) : '',
             ].filter(Boolean).join('\n'),
           })),
           { topN: 8, timeoutMsOverride: AGENT_PREP_RERANK_TIMEOUT_MS },
@@ -349,8 +355,8 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
         return { skills, skillCacheHit: false }
       }
       const [{ mcpTools, mcpRerankMeta, mcpCandidates, mcpCacheHit }, { skills, skillCacheHit }] = await Promise.all([
-        timedTask('MCP 工具筛选（嵌入+重排）', selectMcpToolsTask()),
-        timedTask('技能筛选（嵌入+重排）', selectSkillsTask()),
+        timedTask('MCP 工具筛选（名称简介+重排）', selectMcpToolsTask()),
+        timedTask('技能筛选（名称简介+重排）', selectSkillsTask()),
       ])
       markPerf('工具与技能筛选', `MCP ${mcpTools.length} 个${mcpCacheHit ? '·缓存' : ''} / 技能 ${skills.length} 个${skillCacheHit ? '·缓存' : ''}`)
       sendPrepProgress()
@@ -721,55 +727,6 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
       await refreshResolvedProxyUrl()
       const indexed = await messageVectorService.ensureSessionVectors(sessionId, cfg, undefined, (progress) => {
         if (!sender.isDestroyed()) sender.send('embedding:buildProgress', progress)
-      })
-      return { success: true, indexed }
-    } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : String(e) }
-    }
-  })
-
-  ipcMain.handle('embedding:agentResourceStatus', async (_e, kind: 'skill' | 'mcp_tool') => {
-    try {
-      const { getEmbeddingConfig } = await import('../../services/ai/embeddingService')
-      const { agentResourceVectorService } = await import('../../services/agent/agentResourceVectorService')
-      const cfg = getEmbeddingConfig()
-      if (kind === 'skill') {
-        const { skillManagerService } = await import('../../services/skillManagerService')
-        return { success: true, status: agentResourceVectorService.getSkillStatus(skillManagerService.getSkillResourceDocuments(), cfg) }
-      }
-      const { mcpClientService } = await import('../../services/mcpClientService')
-      const { buildReadOnlyMcpToolDescriptors } = await import('../../services/agent/mcpToolPolicy')
-      const tools = buildReadOnlyMcpToolDescriptors(mcpClientService.getConnectedToolSchemas())
-      return { success: true, status: agentResourceVectorService.getMcpStatus(tools, cfg) }
-    } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : String(e) }
-    }
-  })
-
-  ipcMain.handle('embedding:buildAgentResources', async (event, kind: 'skill' | 'mcp_tool') => {
-    try {
-      const { getEmbeddingConfig } = await import('../../services/ai/embeddingService')
-      const { refreshResolvedProxyUrl } = await import('../../services/ai/proxyFetch')
-      const { agentResourceVectorService } = await import('../../services/agent/agentResourceVectorService')
-      const cfg = getEmbeddingConfig()
-      if (!agentResourceVectorService.isReady(cfg)) {
-        return { success: false, error: '未启用或未配置嵌入模型（请先在设置 → 嵌入中配置并启用）' }
-      }
-      const sender = event.sender
-      await refreshResolvedProxyUrl()
-      if (kind === 'skill') {
-        const { skillManagerService } = await import('../../services/skillManagerService')
-        const indexed = await agentResourceVectorService.buildSkills(skillManagerService.getSkillResourceDocuments(), cfg, (progress) => {
-          if (!sender.isDestroyed()) sender.send('embedding:agentResourceBuildProgress', progress)
-        })
-        return { success: true, indexed }
-      }
-      const { mcpClientService } = await import('../../services/mcpClientService')
-      const { buildReadOnlyMcpToolDescriptors } = await import('../../services/agent/mcpToolPolicy')
-      const tools = buildReadOnlyMcpToolDescriptors(mcpClientService.getConnectedToolSchemas())
-      if (tools.length === 0) return { success: false, error: '暂无可向量化的已连接只读 MCP 工具' }
-      const indexed = await agentResourceVectorService.buildMcpTools(tools, cfg, (progress) => {
-        if (!sender.isDestroyed()) sender.send('embedding:agentResourceBuildProgress', progress)
       })
       return { success: true, indexed }
     } catch (e) {

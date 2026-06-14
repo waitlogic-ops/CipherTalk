@@ -283,19 +283,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     test: (cfg: unknown) => ipcRenderer.invoke('embedding:test', cfg) as Promise<{ success: boolean; dimension?: number; error?: string }>,
     sessionStatus: (sessionId: string) => ipcRenderer.invoke('embedding:sessionStatus', sessionId) as Promise<{ success: boolean; enabled?: boolean; count?: number; store?: unknown; error?: string }>,
     buildSession: (sessionId: string) => ipcRenderer.invoke('embedding:buildSession', sessionId) as Promise<{ success: boolean; indexed?: number; error?: string }>,
-    agentResourceStatus: (kind: 'skill' | 'mcp_tool') =>
-      ipcRenderer.invoke('embedding:agentResourceStatus', kind) as Promise<{ success: boolean; status?: unknown; error?: string }>,
-    buildAgentResources: (kind: 'skill' | 'mcp_tool') =>
-      ipcRenderer.invoke('embedding:buildAgentResources', kind) as Promise<{ success: boolean; indexed?: number; error?: string }>,
     onBuildProgress: (callback: (progress: unknown) => void): (() => void) => {
       const listener = (_e: unknown, progress: unknown) => callback(progress)
       ipcRenderer.on('embedding:buildProgress', listener)
       return () => ipcRenderer.removeListener('embedding:buildProgress', listener)
-    },
-    onAgentResourceBuildProgress: (callback: (progress: unknown) => void): (() => void) => {
-      const listener = (_e: unknown, progress: unknown) => callback(progress)
-      ipcRenderer.on('embedding:agentResourceBuildProgress', listener)
-      return () => ipcRenderer.removeListener('embedding:agentResourceBuildProgress', listener)
     },
   },
 
