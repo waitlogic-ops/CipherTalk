@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Card, ScrollShadow, Spinner } from '@heroui/react'
-import { BookOpen, CalendarDays, PenLine, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button, Card, Label, ListBox, Modal, Popover, ScrollShadow, Spinner, Toolbar } from '@heroui/react'
+import { BookOpen, Check, Copy, Download, PenLine, RefreshCw, Trash2, Type } from 'lucide-react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { MemoryDiaryEntryInfo } from '../types/electron'
+
+type DiaryFontMode = 'hand' | 'song' | 'native'
 
 function formatDiaryDate(date: string): string {
   const [year, month, day] = date.split('-')
@@ -18,6 +20,19 @@ function cardPreview(diary: MemoryDiaryEntryInfo): string {
   return diary.excerpt || stripMemoryIndex(diary.content || '').replace(/^# .+$/gm, '').replace(/\s+/g, ' ').trim() || '这一天还没有留下太多文字。'
 }
 
+function splitCardPreview(text: string): { head: string; tail: string; truncated: boolean } {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  const headLength = Math.min(96, Math.max(52, Math.floor(normalized.length * 0.58)))
+  const head = normalized.slice(0, headLength).trimEnd()
+  const tail = normalized.slice(headLength).trimStart()
+
+  return {
+    head,
+    tail,
+    truncated: tail.length > 0,
+  }
+}
+
 const DIARY_SUMMARIZING_LINES = [
   '把今天摊开，挑几段舍不得散的',
   '有些句子已经在时间里褪色了，趁还看得见，记下来',
@@ -30,6 +45,12 @@ const DIARY_SUMMARIZING_LINES = [
 
 const EXISTING_TODAY_DIARY_NOTICE = '今天的日记已经躺在那儿了。再写一篇，前一篇就会被盖掉。 我不想让它还没被好好看过，就消失了。'
 
+const DIARY_FONT_OPTIONS: Array<{ id: DiaryFontMode; label: string }> = [
+  { id: 'hand', label: '手写' },
+  { id: 'song', label: '宋体' },
+  { id: 'native', label: '原生' },
+]
+
 export default function DiaryPage() {
   const [diaries, setDiaries] = useState<MemoryDiaryEntryInfo[]>([])
   const [selectedDate, setSelectedDate] = useState('')
@@ -39,11 +60,17 @@ export default function DiaryPage() {
   const [reading, setReading] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
   const [summarizingLineIndex, setSummarizingLineIndex] = useState(0)
+  const [readerOpen, setReaderOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [html, setHtml] = useState('')
-
-  const selectedPreview = useMemo(() => selectedDiary ? stripMemoryIndex(selectedDiary.content || '') : '', [selectedDiary])
+  const [readerFont, setReaderFont] = useState<DiaryFontMode>('hand')
+  const [fontPopoverOpen, setFontPopoverOpen] = useState(false)
+  const [copiedDiary, setCopiedDiary] = useState(false)
+  const [downloadingDiary, setDownloadingDiary] = useState(false)
+  const [deletePopoverDate, setDeletePopoverDate] = useState('')
+  const [deletingDiary, setDeletingDiary] = useState(false)
+  const diaryExportRef = useRef<HTMLDivElement | null>(null)
 
   const loadDiary = useCallback(async (date: string) => {
     if (!date) return
@@ -78,8 +105,7 @@ export default function DiaryPage() {
         : nextDiaries[0]?.date || ''
       selectedDateRef.current = nextSelected
       setSelectedDate(nextSelected)
-      if (nextSelected) await loadDiary(nextSelected)
-      else {
+      if (!nextSelected) {
         setSelectedDiary(null)
         setHtml('')
       }
@@ -88,7 +114,7 @@ export default function DiaryPage() {
     } finally {
       setLoading(false)
     }
-  }, [loadDiary])
+  }, [])
 
   useEffect(() => {
     void loadDiaries()
@@ -106,6 +132,7 @@ export default function DiaryPage() {
     selectedDateRef.current = date
     setSelectedDate(date)
     setNotice('')
+    setReaderOpen(true)
     void loadDiary(date)
   }
 
@@ -113,6 +140,7 @@ export default function DiaryPage() {
     selectedDateRef.current = diary.date
     setSelectedDate(diary.date)
     setSelectedDiary(diary)
+    setReaderOpen(true)
     const rendered = await marked.parse(diary.content || '')
     setHtml(DOMPurify.sanitize(rendered))
   }, [])
@@ -123,6 +151,9 @@ export default function DiaryPage() {
     setNotice('')
     setError('')
     setSummarizingLineIndex(0)
+    setSelectedDiary(null)
+    setHtml('')
+    setReaderOpen(true)
     try {
       const res = await window.electronAPI.memory.summarizeTodayDiary()
       if (!res.success || !res.diary) throw new Error(res.error || '总结日记失败')
@@ -135,10 +166,70 @@ export default function DiaryPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '总结日记失败')
+      setReaderOpen(false)
     } finally {
       setSummarizing(false)
     }
   }, [loadDiaries, showDiary, summarizing])
+
+  const deleteDiary = useCallback(async (date: string) => {
+    if (!date || deletingDiary) return
+    setDeletingDiary(true)
+    setError('')
+    try {
+      const res = await window.electronAPI.memory.deleteDiary(date)
+      if (!res.success) throw new Error(res.error || '删除日记失败')
+      setDeletePopoverDate('')
+      await loadDiaries()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除日记失败')
+    } finally {
+      setDeletingDiary(false)
+    }
+  }, [deletingDiary, loadDiaries])
+
+  const copyDiaryText = useCallback(async () => {
+    const text = stripMemoryIndex(selectedDiary?.content || '').trim()
+    if (!text) return
+    await navigator.clipboard.writeText(text)
+    setCopiedDiary(true)
+    window.setTimeout(() => setCopiedDiary(false), 1200)
+  }, [selectedDiary])
+
+  const downloadDiaryImage = useCallback(async () => {
+    const node = diaryExportRef.current
+    if (!node || downloadingDiary) return
+
+    setDownloadingDiary(true)
+    try {
+      await document.fonts?.ready
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()))
+      })
+
+      const rect = node.getBoundingClientRect()
+      const domtoimage = (await import('dom-to-image-more')).default
+      const dataUrl = await domtoimage.toPng(node, {
+        bgcolor: '#f4e7c8',
+        cacheBust: true,
+        filter: (target) => {
+          if (!(target instanceof HTMLElement)) return true
+          return !target.classList.contains('diary-reader-toolbar') && !target.classList.contains('diary-paper-close')
+        },
+        height: Math.ceil(rect.height),
+        scale: 2,
+        width: Math.ceil(rect.width),
+      })
+      const link = document.createElement('a')
+      link.download = `${selectedDiary?.date || 'diary'}-日记.png`
+      link.href = dataUrl
+      link.click()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '下载日记图片失败')
+    } finally {
+      setDownloadingDiary(false)
+    }
+  }, [downloadingDiary, selectedDiary])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-(--bg-primary)">
@@ -178,22 +269,6 @@ export default function DiaryPage() {
         </Card>
       )}
 
-      {summarizing && (
-        <Card className="mx-7 mb-4 overflow-hidden">
-          <Card.Header className="items-center gap-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-soft-foreground">
-              <PenLine className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <Card.Title className="text-base">正在总结日记</Card.Title>
-              <Card.Description className="diary-summary-line mt-1 text-sm leading-7" key={summarizingLineIndex}>
-                {DIARY_SUMMARIZING_LINES[summarizingLineIndex]}
-              </Card.Description>
-            </div>
-          </Card.Header>
-        </Card>
-      )}
-
       {loading ? (
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <Spinner />
@@ -211,81 +286,318 @@ export default function DiaryPage() {
           </Card>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 px-7 pb-7 xl:grid-cols-[minmax(320px,420px)_1fr]">
-          <ScrollShadow hideScrollBar className="min-h-0" size={40}>
-            <div className="grid gap-3 pr-1">
-              {diaries.map((diary) => {
-                const active = diary.date === selectedDate
-                return (
-                  <Card
-                    key={diary.date}
-                    role="button"
-                    tabIndex={0}
-                    variant={active ? 'secondary' : 'default'}
-                    className="relative cursor-pointer overflow-hidden transition-transform hover:-translate-y-0.5"
-                    onClick={() => handleSelect(diary.date)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        handleSelect(diary.date)
-                      }
-                    }}
-                  >
-                    <Card.Header className="gap-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <Card.Title className="truncate text-base">{diary.title}</Card.Title>
-                        <span className="shrink-0 text-xs text-muted">{formatDiaryDate(diary.date)}</span>
-                      </div>
-                      <div className="relative max-h-27 overflow-hidden">
-                        <Card.Description className="text-sm leading-7">
-                          {cardPreview(diary)}
-                        </Card.Description>
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-linear-to-b from-transparent to-surface backdrop-blur-[1px]" />
-                      </div>
-                      <span className="text-xs font-medium text-primary">点击查看</span>
-                    </Card.Header>
-                  </Card>
-                )
-              })}
-            </div>
-          </ScrollShadow>
-
-          <Card className="flex min-h-0 flex-col overflow-hidden">
-            <Card.Header className="shrink-0 border-b border-border/70">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <Card.Title className="truncate text-xl">{selectedDiary?.title || '日记'}</Card.Title>
-                  {selectedDiary?.date && (
-                    <Card.Description className="mt-1 flex items-center gap-1.5">
-                      <CalendarDays className="size-3.5" />
-                      {formatDiaryDate(selectedDiary.date)}
-                    </Card.Description>
-                  )}
-                </div>
-                {reading && <Spinner size="sm" />}
-              </div>
-            </Card.Header>
-            <ScrollShadow hideScrollBar className="min-h-0 flex-1" size={48}>
-              <article
-                className="diary-markdown mx-auto max-w-210 px-6 py-7 text-[15px] leading-8 text-foreground"
-                dangerouslySetInnerHTML={{ __html: html || DOMPurify.sanitize(selectedPreview) }}
-              />
-            </ScrollShadow>
-          </Card>
-        </div>
+        <ScrollShadow hideScrollBar className="min-h-0 flex-1 px-7 pb-7" size={48}>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 pr-1">
+            {diaries.map((diary) => {
+              const active = diary.date === selectedDate
+              const preview = splitCardPreview(cardPreview(diary))
+              return (
+                <Card
+                  key={diary.date}
+                  variant={active ? 'secondary' : 'default'}
+                  className="diary-list-card relative overflow-hidden"
+                >
+                  <Card.Header className="gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Card.Title className="truncate text-base">{diary.title}</Card.Title>
+                      <span className="shrink-0 text-xs text-muted">{formatDiaryDate(diary.date)}</span>
+                    </div>
+                    <div className="relative max-h-27 overflow-hidden">
+                      <Card.Description className="diary-card-preview text-sm leading-7">
+                        <span className="diary-card-preview-head">{preview.head}</span>
+                        {preview.truncated && (
+                          <span className="diary-card-preview-tail">{preview.tail}</span>
+                        )}
+                      </Card.Description>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <Button
+                        className="px-4"
+                        size="sm"
+                        variant="secondary"
+                        onPress={() => handleSelect(diary.date)}
+                      >
+                        <BookOpen className="size-4" />
+                        点击查看
+                      </Button>
+                      <Popover
+                        isOpen={deletePopoverDate === diary.date}
+                        onOpenChange={(open) => setDeletePopoverDate(open ? diary.date : '')}
+                      >
+                        <Button
+                          isIconOnly
+                          aria-label="删除日记"
+                          className="hover:bg-danger hover:text-white"
+                          isDisabled={deletingDiary}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                        <Popover.Content placement="bottom end" offset={8}>
+                          <Popover.Dialog className="w-60 p-3">
+                            <p className="m-0 text-sm leading-6 text-foreground">删除这一天的日记？删掉后无法恢复。</p>
+                            <div className="mt-3 flex justify-end gap-2">
+                              <Button size="sm" variant="ghost" onPress={() => setDeletePopoverDate('')}>
+                                取消
+                              </Button>
+                              <Button
+                                isDisabled={deletingDiary}
+                                size="sm"
+                                variant="danger"
+                                onPress={() => void deleteDiary(diary.date)}
+                              >
+                                {deletingDiary ? <Spinner size="sm" /> : '删除'}
+                              </Button>
+                            </div>
+                          </Popover.Dialog>
+                        </Popover.Content>
+                      </Popover>
+                    </div>
+                  </Card.Header>
+                </Card>
+              )
+            })}
+          </div>
+        </ScrollShadow>
       )}
+
+      <Modal.Backdrop isOpen={readerOpen} onOpenChange={setReaderOpen} variant="blur">
+        <Modal.Container className="py-10" size="cover" placement="center" scroll="inside">
+          <Modal.Dialog className="relative bg-transparent p-0 shadow-none">
+            <Card
+              ref={diaryExportRef}
+              className="diary-book-card relative mx-auto flex max-h-[calc(100vh-5rem)] w-full max-w-210 flex-col overflow-hidden rounded-4xl p-0"
+            >
+              <Modal.CloseTrigger className="diary-paper-tool-button diary-paper-close absolute right-4 top-4 z-20" />
+              {!reading && !summarizing && selectedDiary && (
+                <Toolbar
+                  isAttached
+                  aria-label="日记工具栏"
+                  className="diary-reader-toolbar absolute left-4 top-4 z-20"
+                >
+                  <Popover isOpen={fontPopoverOpen} onOpenChange={setFontPopoverOpen}>
+                    <Button
+                      isIconOnly
+                      aria-label="切换字体"
+                      className="diary-paper-tool-button"
+                      size="sm"
+                      variant="tertiary"
+                    >
+                      <Type className="size-4" />
+                    </Button>
+                    <Popover.Content placement="bottom start" offset={8}>
+                      <Popover.Dialog className="p-1">
+                        <ListBox
+                          aria-label="选择日记字体"
+                          className="w-36"
+                          selectedKeys={new Set([readerFont])}
+                          selectionMode="single"
+                          onSelectionChange={(keys) => {
+                            const next = [...keys][0]
+                            if (!next) return
+                            setReaderFont(String(next) as DiaryFontMode)
+                            setFontPopoverOpen(false)
+                          }}
+                        >
+                          {DIARY_FONT_OPTIONS.map((option) => (
+                            <ListBox.Item key={option.id} id={option.id} textValue={option.label}>
+                              <Label>{option.label}</Label>
+                              <ListBox.ItemIndicator>
+                                {({ isSelected }) => isSelected ? <Check className="size-4 text-accent" /> : null}
+                              </ListBox.ItemIndicator>
+                            </ListBox.Item>
+                          ))}
+                        </ListBox>
+                      </Popover.Dialog>
+                    </Popover.Content>
+                  </Popover>
+                  <Button
+                    isIconOnly
+                    aria-label="复制日记文本"
+                    className="diary-paper-tool-button"
+                    size="sm"
+                    variant="tertiary"
+                    onPress={() => void copyDiaryText()}
+                  >
+                    {copiedDiary ? <Check className="size-4" /> : <Copy className="size-4" />}
+                  </Button>
+                  <Button
+                    isIconOnly
+                    aria-label="下载日记图片"
+                    className="diary-paper-tool-button"
+                    isDisabled={downloadingDiary}
+                    size="sm"
+                    variant="tertiary"
+                    onPress={() => void downloadDiaryImage()}
+                  >
+                    {downloadingDiary ? <Spinner size="sm" /> : <Download className="size-4" />}
+                  </Button>
+                </Toolbar>
+              )}
+              <Card.Content className="relative z-10 min-h-0 p-0">
+                {summarizing ? (
+                  <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 px-8 py-20 text-center">
+                    <div className="flex size-14 items-center justify-center rounded-full bg-black/5">
+                      <PenLine className="size-6 animate-pulse" />
+                    </div>
+                    <div className="text-2xl font-semibold">正在总结日记</div>
+                    <p className="diary-summary-line m-0 max-w-md text-base leading-8 opacity-70" key={summarizingLineIndex}>
+                      {DIARY_SUMMARIZING_LINES[summarizingLineIndex]}
+                    </p>
+                  </div>
+                ) : reading ? (
+                  <div className="flex h-80 items-center justify-center">
+                    <Spinner />
+                  </div>
+                ) : (
+                  <ScrollShadow hideScrollBar className="diary-reader-scroll max-h-[calc(100vh-5rem)]" size={56}>
+                    <article
+                      className={`diary-markdown diary-book-page diary-font-${readerFont} w-full px-0 py-20`}
+                      dangerouslySetInnerHTML={{ __html: html }}
+                    />
+                  </ScrollShadow>
+                )}
+              </Card.Content>
+            </Card>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
 
       <style>
         {`
+          @font-face {
+            font-family: "CipherTalkDiaryHand";
+            src: url("/日记1.ttf") format("truetype");
+            font-display: swap;
+          }
+          .diary-book-card {
+            color: #3e3022;
+            gap: 0 !important;
+            isolation: isolate;
+            padding: 0 !important;
+            background:
+              linear-gradient(135deg, rgba(255, 255, 255, 0.36), transparent 38%),
+              linear-gradient(90deg, rgba(74, 48, 22, 0.1), transparent 4.2rem),
+              #f2e3bd;
+            border: 1px solid rgba(87, 60, 31, 0.22);
+            box-shadow:
+              0 26px 70px rgba(36, 24, 10, 0.28),
+              0 2px 0 rgba(255, 255, 255, 0.5) inset,
+              0 -2px 0 rgba(82, 58, 31, 0.08) inset;
+          }
+          .dark .diary-book-card {
+            color: #3e3022;
+            background:
+              linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent 38%),
+              linear-gradient(90deg, rgba(74, 48, 22, 0.12), transparent 4.2rem),
+              #f2e3bd;
+          }
+          .diary-book-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+              radial-gradient(circle at 2.1rem 4.75rem, rgba(55, 38, 19, 0.24) 0 0.32rem, rgba(255, 249, 229, 0.96) 0.36rem 0.7rem, transparent 0.73rem),
+              radial-gradient(circle at 2.1rem 11.65rem, rgba(55, 38, 19, 0.2) 0 0.32rem, rgba(255, 249, 229, 0.92) 0.36rem 0.7rem, transparent 0.73rem),
+              radial-gradient(circle at 2.1rem 18.55rem, rgba(55, 38, 19, 0.18) 0 0.32rem, rgba(255, 249, 229, 0.9) 0.36rem 0.7rem, transparent 0.73rem),
+              linear-gradient(90deg, rgba(61, 39, 18, 0.12), transparent 0.95rem, transparent calc(100% - 1.2rem), rgba(61, 39, 18, 0.08));
+            filter: drop-shadow(0 1px 1px rgba(58, 38, 16, 0.16));
+          }
+          .diary-book-card::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            opacity: 0.42;
+            background:
+              linear-gradient(100deg, transparent 0 78%, rgba(115, 78, 35, 0.08) 88%, rgba(255, 255, 255, 0.24) 96%, transparent 100%),
+              radial-gradient(circle at 20% 10%, rgba(93, 65, 30, 0.12) 0 0.035rem, transparent 0.055rem),
+              radial-gradient(circle at 70% 30%, rgba(93, 65, 30, 0.1) 0 0.03rem, transparent 0.05rem),
+              radial-gradient(circle at 46% 78%, rgba(93, 65, 30, 0.08) 0 0.03rem, transparent 0.05rem);
+            background-size: 100% 100%, 1.9rem 1.9rem, 2.6rem 2.6rem, 2.2rem 2.2rem;
+            mix-blend-mode: multiply;
+          }
+          .diary-reader-scroll {
+            background:
+              linear-gradient(90deg, transparent 0 4.78rem, rgba(179, 74, 72, 0.42) 4.78rem, rgba(179, 74, 72, 0.42) 4.86rem, transparent 4.86rem),
+              repeating-linear-gradient(180deg, transparent 0 3.52rem, rgba(66, 114, 146, 0.24) 3.52rem, rgba(66, 114, 146, 0.24) calc(3.52rem + 1px), transparent calc(3.52rem + 1px) 3.84rem),
+              radial-gradient(circle at 24% 18%, rgba(112, 79, 36, 0.09) 0 0.035rem, transparent 0.055rem),
+              radial-gradient(circle at 62% 64%, rgba(112, 79, 36, 0.08) 0 0.03rem, transparent 0.05rem),
+              linear-gradient(90deg, rgba(104, 70, 31, 0.08), transparent 1.2rem, transparent calc(100% - 1rem), rgba(104, 70, 31, 0.06)),
+              rgba(255, 249, 226, 0.52);
+            background-attachment: local, local, local, local, local, local;
+            background-size: auto, auto, 2.1rem 2.1rem, 2.6rem 2.6rem, auto, auto;
+            border-radius: inherit;
+            box-shadow:
+              inset 0.85rem 0 1.2rem -1.4rem rgba(47, 30, 12, 0.48),
+              inset -1.2rem 0 1.8rem -1.8rem rgba(47, 30, 12, 0.38);
+            width: 100%;
+          }
+          .diary-book-page {
+            color: #3e3022;
+            min-height: calc(100vh - 5rem);
+            padding-left: clamp(6.2rem, 13vw, 8.75rem);
+            padding-right: clamp(2.25rem, 8vw, 5.5rem);
+            position: relative;
+            font-size: 1.72rem;
+            font-weight: 700;
+            line-height: 2.2;
+            letter-spacing: 0;
+          }
+          .diary-book-page::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+              linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent 12rem),
+              linear-gradient(6deg, transparent 0 92%, rgba(98, 68, 31, 0.08) 96%, rgba(255, 255, 255, 0.22) 100%);
+            mix-blend-mode: soft-light;
+          }
+          .diary-book-page > * {
+            max-width: 42rem;
+            position: relative;
+            z-index: 1;
+          }
+          .diary-font-hand {
+            font-family: "CipherTalkDiaryHand", "LXGW WenKai", "霞鹜文楷", "Ma Shan Zheng", "华文行楷", "STXingkai", "STKaiti", "KaiTi", "楷体", cursive, serif;
+          }
+          .diary-font-song {
+            font-family: "Songti SC", "SimSun", "宋体", serif;
+          }
+          .diary-font-native {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+          }
+          .diary-reader-toolbar {
+            border-color: rgba(62, 48, 34, 0.1) !important;
+            background: rgba(244, 231, 200, 0.52) !important;
+            color: rgba(62, 48, 34, 0.7) !important;
+            box-shadow: 0 8px 24px rgba(62, 48, 34, 0.08) !important;
+            backdrop-filter: blur(10px);
+          }
+          .diary-paper-tool-button {
+            background: rgba(62, 48, 34, 0.055) !important;
+            color: rgba(62, 48, 34, 0.72) !important;
+            box-shadow: none !important;
+          }
+          .diary-paper-tool-button:hover,
+          .diary-paper-tool-button[data-hovered="true"] {
+            background: rgba(62, 48, 34, 0.11) !important;
+            color: rgba(62, 48, 34, 0.86) !important;
+          }
           .diary-markdown h1 {
             margin: 0 0 1.75rem;
-            font-size: 1.85rem;
+            font-size: 2.85rem;
             line-height: 1.25;
-            font-weight: 650;
+            font-weight: 600;
           }
           .diary-markdown h2 {
             margin: 2rem 0 0.75rem;
-            font-size: 1.05rem;
+            font-size: 1.85rem;
             line-height: 1.5;
             font-weight: 650;
           }
@@ -304,6 +616,41 @@ export default function DiaryPage() {
             border-left: 3px solid hsl(var(--heroui-accent, 180 65% 42%));
             padding-left: 1rem;
             color: var(--muted);
+          }
+          .diary-list-card::after {
+            content: "";
+            position: absolute;
+            inset: auto 0 0 0;
+            height: 45%;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.28s ease;
+            background: radial-gradient(120% 130% at 50% 100%, hsl(var(--heroui-accent, 180 65% 42%) / 0.3), transparent 72%);
+          }
+          .diary-list-card:hover::after {
+            opacity: 1;
+          }
+          .diary-card-preview {
+            display: block;
+            height: 5.25rem;
+            overflow: hidden;
+          }
+          .diary-card-preview-head {
+            display: -webkit-box;
+            height: 3.5rem;
+            overflow: hidden;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+          }
+          .diary-card-preview-tail {
+            display: block;
+            overflow: hidden;
+            height: 1.75rem;
+            max-width: 100%;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            filter: blur(1.25px);
+            opacity: 0.62;
           }
           .diary-summary-line {
             animation: diarySummaryLineIn 420ms ease-out both;

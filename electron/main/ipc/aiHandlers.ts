@@ -9,7 +9,9 @@ import type { PersonaNotes } from '../../services/agent/persona/personaTypes'
 /** 进行中的 agent 运行：runId → AbortController，用于取消。 */
 const agentAborters = new Map<string, AbortController>()
 const AGENT_RUN_PROXY_CACHE_TTL_MS = 5 * 60 * 1000
-// 准备阶段网络调用（查询嵌入/重排）超时：超时直接走降级路径（不影响正确性），别让慢服务拖住首包
+// 准备阶段网络调用超时：超时直接走降级路径（不影响正确性），别让慢服务拖住首包。
+// 嵌入请求通常比 rerank 慢，单独给更宽松预算，避免频繁无意义降级。
+const AGENT_PREP_VECTOR_TIMEOUT_MS = 3000
 const AGENT_PREP_RERANK_TIMEOUT_MS = 800
 const AGENT_PREP_PROGRESS_TITLE = '大模型准备中'
 
@@ -295,7 +297,7 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
                 readOnlyMcpTools,
                 24,
                 undefined,
-                { requireCurrent: true, queryTimeoutMs: AGENT_PREP_RERANK_TIMEOUT_MS, queryMaxRetries: 0 },
+                { requireCurrent: true, queryTimeoutMs: AGENT_PREP_VECTOR_TIMEOUT_MS, queryMaxRetries: 0 },
               )
               if (vectorMcpTools.length > 0) candidates = vectorMcpTools
             } else if (mcpVectorStatus.currentCount > 0) {
@@ -864,6 +866,16 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
       const { memoryDatabase } = await import('../../services/memory/memoryDatabase')
       const diary = memoryDatabase.readDiary(String(date || ''))
       return diary ? { success: true, diary } : { success: false, error: '未找到该日记' }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('memory:deleteDiary', async (_event, date: string) => {
+    try {
+      const { memoryDatabase } = await import('../../services/memory/memoryDatabase')
+      const deleted = memoryDatabase.deleteDiary(String(date || ''))
+      return deleted ? { success: true } : { success: false, error: '未找到该日记' }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
     }

@@ -1124,6 +1124,16 @@ export class MemoryDatabase {
     }
   }
 
+  deleteDiary(date: string): boolean {
+    const safeDate = String(date || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(safeDate)) return false
+    const filePath = join(this.ensureBank(), SELF_REFERENCE_DIR, 'diaries', `${safeDate}.md`)
+    if (!existsSync(filePath)) return false
+    unlinkSync(filePath)
+    this.syncDerivedMarkdown()
+    return true
+  }
+
   getMigrationStatus(): MemoryMigrationStatus {
     const legacyDbPath = this.getDbPath()
     const memoryBankPath = this.getMemoryBankPath()

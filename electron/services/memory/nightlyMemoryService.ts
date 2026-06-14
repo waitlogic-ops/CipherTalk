@@ -1,5 +1,6 @@
 import type { MainProcessContext } from '../../main/context'
 import { chatService } from '../chatService'
+import { isSystemContactUsername } from '../chat/constants'
 import type { ChatSession, Message } from '../chat/types'
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000
@@ -25,12 +26,23 @@ function messageText(message: Message): string {
   return '[非文本消息]'
 }
 
+function isPrivateDiarySession(session: ChatSession): boolean {
+  const username = String(session.username || '').trim()
+  const lower = username.toLowerCase()
+  if (!username || isSystemContactUsername(lower)) return false
+  if (lower.includes('@chatroom')) return false
+  if (lower.startsWith('gh_')) return false
+  if (session.isFoldGroup || session.isOfficialFolder || session.isOfficialAccount) return false
+  if (Number(session.type) === 3) return false
+  return true
+}
+
 export async function readUnreadDiarySource(): Promise<string> {
   const sessionsResult = await chatService.getSessions(0, 300)
   if (!sessionsResult.success || !Array.isArray(sessionsResult.sessions)) return ''
   const unreadSessions = sessionsResult.sessions
     .filter((session) => Number(session.unreadCount || 0) > 0)
-    .filter((session) => !session.isFoldGroup && !session.isOfficialFolder)
+    .filter(isPrivateDiarySession)
     .sort((a, b) => Number(b.unreadCount || 0) - Number(a.unreadCount || 0) || Number(b.lastTimestamp || 0) - Number(a.lastTimestamp || 0))
     .slice(0, UNREAD_SESSION_LIMIT)
   if (unreadSessions.length === 0) return ''

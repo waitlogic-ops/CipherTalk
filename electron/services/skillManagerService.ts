@@ -23,6 +23,7 @@ const BUILTIN_SKILLS = new Set(['ct-mcp-copilot'])
 const DEFAULT_AGENT_SKILL_LIMIT = 3
 const DEFAULT_AGENT_SKILL_BUDGET = 9000
 const DEFAULT_AGENT_SKILL_CANDIDATES = 20
+const AGENT_PREP_VECTOR_TIMEOUT_MS = 3000
 const AGENT_PREP_RERANK_TIMEOUT_MS = 800
 const SKILL_DOCS_CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -155,6 +156,11 @@ function compactSkillContent(content: string, maxChars: number): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
   return body.length > maxChars ? `${body.slice(0, Math.max(0, maxChars - 20)).trim()}\n...<truncated>` : body
+}
+
+function briefError(error: unknown): string {
+  if (error instanceof Error) return `${error.name || 'Error'}: ${error.message}`
+  return String(error)
 }
 
 function skillTokens(value: string): Set<string> {
@@ -398,10 +404,10 @@ export class SkillManagerService {
           documents,
           DEFAULT_AGENT_SKILL_CANDIDATES,
           undefined,
-          { requireCurrent: true, queryTimeoutMs: AGENT_PREP_RERANK_TIMEOUT_MS, queryMaxRetries: 0 },
+          { requireCurrent: true, queryTimeoutMs: AGENT_PREP_VECTOR_TIMEOUT_MS, queryMaxRetries: 0 },
         )
       } catch (error) {
-        console.warn('[skills] vector candidate selection failed, fallback to token scoring:', error)
+        console.warn('[skills] vector candidate selection failed, fallback to token scoring:', briefError(error))
       }
     }
 
