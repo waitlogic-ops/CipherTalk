@@ -110,6 +110,15 @@ export default defineConfig(async () => {
           }
         },
         {
+          entry: 'electron/aiExportUtilityProcess.ts',
+          vite: {
+            build: {
+              outDir: 'dist-electron',
+              rollupOptions: { external }
+            }
+          }
+        },
+        {
           entry: 'electron/mcp.ts',
           vite: {
             build: {

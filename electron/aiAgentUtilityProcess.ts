@@ -68,7 +68,13 @@ process.once('exit', () => {
 async function handleMessage(msg: any): Promise<void> {
   const { id, type, payload } = msg || {}
   // 代理结果由对应 proxyClient 自己的监听处理，这里直接忽略，避免回 unknown type 噪声。
-  if (type === 'wcdb:result' || type === 'mcp:result' || type === 'codeWorkspace:result') return
+  if (
+    type === 'wcdb:result' ||
+    type === 'mcp:result' ||
+    type === 'codeWorkspace:result' ||
+    type === 'aiExport:result' ||
+    type === 'aiExport:progress'
+  ) return
   try {
     switch (type) {
       case 'ping':

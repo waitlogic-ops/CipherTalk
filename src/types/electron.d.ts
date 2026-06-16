@@ -1052,6 +1052,7 @@ export interface ElectronAPI {
       success: boolean
       successCount?: number
       failCount?: number
+      outputPaths?: string[]
       error?: string
     }>
     exportSession: (sessionId: string, outputPath: string, options: ExportOptions) => Promise<{

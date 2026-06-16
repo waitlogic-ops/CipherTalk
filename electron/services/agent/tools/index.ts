@@ -31,6 +31,7 @@ import { sendWechatFile } from './sendWechatFile'
 import { personaControl } from './personaControl'
 import { sendWechatMedia } from './wechatMedia'
 import { createCodeWorkspaceTools } from './codeWorkspace'
+import { exportChat } from './exportChat'
 
 /** 基础读/查工具（不含 delegate_analysis），主 Agent 与子 Agent 共用。 */
 export function buildBaseTools(_scope: AgentScope): ToolSet {
@@ -89,6 +90,7 @@ export function buildChatTools(scope: AgentScope, providerConfig: AgentProviderC
     send_random_image: sendRandomImage,
     send_wechat_media: sendWechatMedia,
     send_wechat_file: sendWechatFile,
+    export_chat: exportChat,
     persona_control: personaControl,
     remember: createRemember(scope),
     recall: createRecall(scope),

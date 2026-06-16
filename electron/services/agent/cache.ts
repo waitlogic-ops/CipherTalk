@@ -30,6 +30,7 @@ const CACHEABLE_BUILTIN_TOOL_NAMES = new Set([
   'forget',
   'consolidate_memory',
   'delegate_analysis',
+  'export_chat',
 ])
 
 function toCamelCase(value: string): string {

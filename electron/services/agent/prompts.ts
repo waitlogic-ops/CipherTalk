@@ -36,6 +36,7 @@ const TOOL_PROMPT = `
 - forget：删除一条过时/记错的长期记忆（id 来自 recall / list_memories），用户纠正旧信息时用。
 - consolidate_memory：整理记忆，分组去冗余、防膨胀；记了很多条或用户要"整理记忆"时调。
 - persona_control：控制数字分身/克隆好友流程。用户说"打开/开启/进入/和某人的数字分身聊天"时用 action=open；如果不存在，按工具返回询问是否克隆。用户在上一轮已被询问后回复"确定/可以/开始/克隆吧"等肯定语义时，用 action=confirm_build，并沿用上一轮工具输出里的 sessionId/displayName。用户明确要求"向量化/建立语义索引"时用 action=vectorize。
+- export_chat：自动化导出一个聊天会话。只用于用户明确要求导出聊天记录；先 validateOnly=true 校验/解析，缺 session/dateRange/format/mediaOptions/outputDir 就追问。mediaOptions 必须显式给头像、图片、视频、表情、语音五项布尔值。参数齐全后先请求最终确认；只有用户明确确认后，才调用 confirmed=true 写文件。支持 chatlab、chatlab-jsonl、json、html、excel、sql，不支持 txt。
 - send_wechat_media：微信出站媒体统一工具。用户明确要求把图片/视频/文件发到微信时使用；media 可填应用缓存/导出目录内的本地绝对路径，也可填 http/https 远程媒体 URL；工具会自动分流为图片、视频或文件。caption 可填简短说明。不要输出 MEDIA 路径或本地路径。
 `
 
@@ -48,6 +49,7 @@ const ROUTING_PROMPT = `
 - "某人某天 / 某段时间聊了啥" → list_contacts 拿 username，再 get_timeline
 - 人名/群名解析 → list_contacts；列群 / 群成员 / 群内发言排行 → list_groups / group_members / group_member_ranking
 - 朋友圈内容查询 → search_moments；朋友圈数量/趋势/占比/点赞评论排行 → moments_stats
+- 导出聊天记录 → export_chat；先校验和补齐参数，参数齐全后必须先问最终确认，确认后才传 confirmed=true
 - 用户要求画图/图表/趋势图/占比图/分布图，且你已有结构化数据 → 输出 ECharts option JSON 代码块（语言标记 echarts 或 chart），不要输出 Mermaid。
 - 以上都覆盖不了的特殊结构化查询，且已确认结构化工具不够 → 才轮到 query_sql（兜底，见行为准则）
 
@@ -72,6 +74,7 @@ const EVIDENCE_PROMPT = `
 - 复杂/多步问题（跨多人、长时间跨度、要综合多轮）先用 update_plan 列步骤再动手，每完成一步更新；简单问题别用，直接查。
 - 图表回答使用 ECharts：输出 \`\`\`echarts 的严格 JSON option（不能有注释、函数、formatter 函数、尾逗号或 JS 表达式）。常用字段：title、tooltip、legend、dataset、xAxis、yAxis、series；图表后用文字解释关键结论。
 - 数字分身流程：打开分身先用 persona_control({action:"open", query:"人名"})。若返回 action=open_persona_chat，告诉用户正在打开；若返回 action=ask_persona_build，询问"是否现在克隆"并保留工具结果上下文。用户随后肯定确认时，必须调用 persona_control({action:"confirm_build", sessionId, displayName, confirmationText})；不要只用文字答应。工具返回 build_persona/build_session_vectors 后应用会执行长任务，回答简短说明即可。
+- 导出聊天记录：export_chat 首次调用优先 validateOnly=true；工具返回 candidates 时让用户选会话；返回 missingFields 时只追问缺项。工具返回 requiresConfirmation=true 后，必须用自然语言复述会话、时间范围、格式、媒体选项、输出目录并询问"确认开始导出吗？"；用户明确确认前禁止传 confirmed=true。
 - 微信媒体发送：如果用户要求发送图片/视频/文件到微信，优先调用 send_wechat_media，不要只在文本里说"已发送"。生成图片仍用 generate_image；工具生成 filePath 后微信 bot 会自动发送。远程图片/视频 URL 可直接交给 send_wechat_media。
 `
 

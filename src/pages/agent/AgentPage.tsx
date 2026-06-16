@@ -805,6 +805,7 @@ const TOOL_LABELS: Record<string, string> = {
   send_sticker: '发表情包',
   send_random_image: '抽一张图片',
   send_wechat_media: '发送微信媒体',
+  export_chat: '导出聊天记录',
   persona_control: '数字分身',
   auto_memory: '自动记忆',
   final_review: '最终审核',

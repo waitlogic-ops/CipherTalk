@@ -2475,9 +2475,10 @@ class ExportService {
     outputDir: string,
     options: ExportOptions,
     onProgress?: (progress: ExportProgress) => void
-  ): Promise<{ success: boolean; successCount: number; failCount: number; error?: string }> {
+  ): Promise<{ success: boolean; successCount: number; failCount: number; error?: string; outputPaths?: string[] }> {
     let successCount = 0
     let failCount = 0
+    const outputPathSet = new Set<string>()
 
     try {
       if (!this.dbDir) {
@@ -2537,6 +2538,9 @@ class ExportService {
             })
             mediaPathMap = mediaResult.mediaPathMap
             voicePathMap = mediaResult.voicePathMap
+            for (const relativePath of new Set([...mediaPathMap.values(), ...voicePathMap.values()])) {
+              outputPathSet.add(path.join(sessionOutputDir, relativePath))
+            }
           } catch (e) {
             console.error(`导出 ${sessionId} 媒体文件失败:`, e)
           }
@@ -2566,6 +2570,7 @@ class ExportService {
 
         if (result.success) {
           successCount++
+          outputPathSet.add(outputPath)
         } else {
           failCount++
           console.error(`导出 ${sessionId} 失败:`, result.error)
@@ -2591,9 +2596,9 @@ class ExportService {
         detail: '导出完成'
       })
 
-      return { success: true, successCount, failCount }
+      return { success: true, successCount, failCount, outputPaths: Array.from(outputPathSet) }
     } catch (e) {
-      return { success: false, successCount, failCount, error: String(e) }
+      return { success: false, successCount, failCount, error: String(e), outputPaths: Array.from(outputPathSet) }
     }
   }
 

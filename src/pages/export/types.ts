@@ -28,6 +28,7 @@ export interface ExportResult {
   success: boolean
   successCount?: number
   failCount?: number
+  outputPaths?: string[]
   error?: string
 }
 

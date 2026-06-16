@@ -239,6 +239,14 @@ export class AgentProcessService {
           void this.handleCodeWorkspaceCall(worker, msg.payload)
           return
         }
+        if (msg?.type === 'aiExport:call') {
+          void this.handleAiExportCall(worker, msg.payload)
+          return
+        }
+        if (msg?.type === 'aiExport:abort') {
+          void this.handleAiExportAbort(msg.payload)
+          return
+        }
         if (msg?.id === 0 && msg.type === 'ready') {
           if (!readyFired) {
             readyFired = true
@@ -404,6 +412,44 @@ export class AgentProcessService {
       worker.postMessage({ type: 'codeWorkspace:result', payload: { reqId, result } })
     } catch (e: any) {
       worker.postMessage({ type: 'codeWorkspace:result', payload: { reqId, error: e?.message || String(e) } })
+    }
+  }
+
+  /**
+   * 处理 Agent 子进程发来的 AI 导出请求：主进程只拉起/回收导出 utility process，
+   * 实际校验、解析与 exportService 调用都在 aiExportUtilityProcess 里完成。
+   */
+  private async handleAiExportCall(
+    worker: UtilityProcess,
+    payload: { reqId: number; method: string; args?: Record<string, unknown> },
+  ): Promise<void> {
+    const reqId = payload?.reqId
+    try {
+      if (payload?.method !== 'exportChat') {
+        throw new Error(`unknown aiExport method: ${payload?.method}`)
+      }
+      const { aiExportProcessService } = await import('./aiExportProcessService')
+      aiExportProcessService.setLogger(this.logger)
+      const requestId = `agent-${reqId}`
+      const result = await aiExportProcessService.exportChat(
+        requestId,
+        payload.args || {},
+        (progress) => worker.postMessage({ type: 'aiExport:progress', payload: { reqId, progress } }),
+      )
+      worker.postMessage({ type: 'aiExport:result', payload: { reqId, result } })
+    } catch (e: any) {
+      worker.postMessage({ type: 'aiExport:result', payload: { reqId, error: e?.message || String(e) } })
+    }
+  }
+
+  private async handleAiExportAbort(payload: { reqId: number }): Promise<void> {
+    try {
+      const reqId = payload?.reqId
+      if (typeof reqId !== 'number') return
+      const { aiExportProcessService } = await import('./aiExportProcessService')
+      aiExportProcessService.abort(`agent-${reqId}`)
+    } catch {
+      // ignore abort races
     }
   }
 
