@@ -47,12 +47,11 @@ export default function EmbeddingTab() {
     try {
       const res = await window.electronAPI.embedding.test(cfg)
       if (res.success) {
-        // 不自动回填维度：避免"测试没发 dimensions、实际发了"不一致。仅提示探测到的维度。
         setStatus({
           ok: true,
-          text: cfg.dimension > 0
-            ? `连接成功，按设定维度输出 ${res.dimension}`
-            : `连接成功，模型默认维度 ${res.dimension}（如需固定维度，在上方"向量维度"填写）`,
+          text: res.dimensionMismatch || (cfg.dimension > 0
+            ? `连接成功，探测到模型维度 ${res.dimension}`
+            : `连接成功，模型默认维度 ${res.dimension}（如需固定维度，在上方"向量维度"填写）`),
         })
       } else {
         setStatus({ ok: false, text: res.error || '测试失败' })

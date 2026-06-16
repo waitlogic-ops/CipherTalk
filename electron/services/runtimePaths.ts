@@ -21,6 +21,9 @@ export function getUserDataPath(): string {
     return app.getPath('userData')
   }
 
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'ciphertalk')
+  }
   const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
   return path.join(appData, 'ciphertalk')
 }

@@ -101,14 +101,32 @@ export function embedQuery(
   return promise
 }
 
-/** 测试嵌入配置：成功则回传实际维度。 */
-export async function testEmbeddingConfig(cfg: EmbeddingConfig): Promise<{ success: boolean; dimension?: number; error?: string }> {
+/** 测试嵌入配置：成功则回传实际维度。优先按用户设定维度测试，不匹配则回退到默认维度重试。 */
+export async function testEmbeddingConfig(cfg: EmbeddingConfig): Promise<{ success: boolean; dimension?: number; error?: string; dimensionMismatch?: string }> {
   try {
-    const vector = await embedQuery('密语语义检索连接测试', cfg)
+    const userDimension = cfg.dimension && cfg.dimension > 0 ? cfg.dimension : 0
+    let vector: number[]
+    if (userDimension > 0) {
+      try {
+        vector = await embedQuery('密语语义检索连接测试', cfg)
+      } catch {
+        vector = await embedQuery('密语语义检索连接测试', { ...cfg, dimension: 0 })
+      }
+    } else {
+      vector = await embedQuery('密语语义检索连接测试', cfg)
+    }
     if (!Array.isArray(vector) || vector.length === 0) {
       return { success: false, error: '嵌入返回为空' }
     }
-    return { success: true, dimension: vector.length }
+    const actualDim = vector.length
+    if (userDimension > 0 && actualDim !== userDimension) {
+      return {
+        success: true,
+        dimension: actualDim,
+        dimensionMismatch: `连接成功，回退到模型默认维度 ${actualDim}`
+      }
+    }
+    return { success: true, dimension: actualDim }
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : String(e) }
   }

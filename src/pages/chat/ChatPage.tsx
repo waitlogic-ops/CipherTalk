@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MessageSquare } from 'lucide-react'
 import { useChatStore, MAX_ACTIVE_MESSAGES } from '../../stores/chatStore'
 import { useUpdateStatusStore } from '../../stores/updateStatusStore'
@@ -253,7 +253,7 @@ function ChatPage(_props: ChatPageProps) {
 
       const saveResult = await window.electronAPI.dialog.saveFile({
         title: '导出语音文件',
-        defaultPath: `${downloadsPath}\\${fileName}`,
+        defaultPath: `${downloadsPath}${window.navigator.platform.toLowerCase().includes('win') ? '\\' : '/'}${fileName}`,
         filters: [{ name: 'WAV 音频', extensions: ['wav'] }]
       })
 

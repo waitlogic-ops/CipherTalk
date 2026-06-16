@@ -1152,6 +1152,22 @@ export class ImageDecryptService {
       hardlinkPaths.push(accountPath)
     }
 
+    // Mac: 动态扫描 xwechat_files 下各子目录的 hardlink 路径
+    if (process.platform === 'darwin' && wxid) {
+      const home = (await import('os')).homedir()
+      const xwechatRoot = join(home, 'Library', 'Containers', 'com.tencent.xinWeChat', 'Data', 'Documents', 'xwechat_files')
+      if (existsSync(xwechatRoot)) {
+        try {
+          for (const entry of readdirSync(xwechatRoot)) {
+            const candidate = join(xwechatRoot, entry, 'db_storage', 'hardlink')
+            if (existsSync(candidate) && !hardlinkPaths.includes(candidate)) {
+              hardlinkPaths.push(candidate)
+            }
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
     if (hardlinkPaths.length === 0) {
       return null
     }
