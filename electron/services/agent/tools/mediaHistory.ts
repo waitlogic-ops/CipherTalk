@@ -12,7 +12,7 @@ import type { SnsCommentEmoji, SnsCommentImage, SnsMedia, SnsPost } from '../../
 import { getProviderDefinition } from '../../ai/providers/catalog'
 import { createLanguageModel } from '../provider'
 import type { AgentProviderConfig, AgentUploadedMediaContext } from '../types'
-import { getRecentChatSessions, msToSeconds, resolveSenders, toLocalTime } from './shared'
+import { msToSeconds, resolveSenders, toLocalTime } from './shared'
 import { reportAgentProgress } from '../progress'
 import { bootstrapIndexRecentSessions, getAiImageOutputDir, writeDataUrlToFile } from './stickers'
 import {
@@ -80,7 +80,6 @@ type ResolveMediaResult = ResolvedMediaFile | {
 
 const MAX_VISION_IMAGE_BYTES = 20 * 1024 * 1024
 const MAX_MOMENT_FETCH_LIMIT = 200
-const MEDIA_VECTOR_BOOTSTRAP_SESSION_CAP = 5
 
 function safeFileSegment(value: string): string {
   return String(value || 'media').replace(/[^a-zA-Z0-9_@.-]/g, '_').slice(0, 80) || 'media'
@@ -216,24 +215,6 @@ function imageDataUrlToBuffer(dataUrl: string): { buffer: Buffer; mediaType: str
   } catch {
     return null
   }
-}
-
-async function ensureChatMediaVectorsForSearch(
-  sessionId: string | undefined,
-  cfg: import('../../ai/embeddingService').EmbeddingConfig,
-): Promise<number> {
-  const { messageVectorService } = await import('../../search/messageVectorService')
-  if (sessionId) return messageVectorService.ensureSessionMediaVectors(sessionId, cfg)
-  const sessions = await getRecentChatSessions(MEDIA_VECTOR_BOOTSTRAP_SESSION_CAP)
-  let total = 0
-  for (const sid of sessions) {
-    try {
-      total += await messageVectorService.ensureSessionMediaVectors(sid, cfg, 80)
-    } catch {
-      /* 单会话媒体向量化失败跳过 */
-    }
-  }
-  return total
 }
 
 function formatMediaVectorHit(hit: import('../../search/messageVectorService').MediaVectorHit, matchedBy: 'vector' | 'both' = 'vector') {
@@ -504,6 +485,7 @@ function momentHitScore(hit: ReturnType<typeof momentHitFromPayload>, terms: str
 export const searchMedia = tool({
   description:
     '检索本地聊天记录里已索引的图片/表情包，按会话、时间、方向、类型和前文语境筛选。' +
+    'query 存在且图片向量化已开启时，只搜索已经建立好的历史图片向量，不会现场向量化历史图片。' +
     '结果里的 mediaId 可传给 inspect_media_image 做视觉理解，或传给 send_media_from_history 展示/回复。',
   inputSchema: z.object({
     query: z.string().optional().describe('按前文语境/文本线索筛选，如 晚安、笑、截图、照片；不填则按时间返回最近媒体'),
@@ -594,12 +576,11 @@ export const searchMedia = tool({
           const cfg = getEmbeddingConfig()
           if (messageVectorService.isMediaReady(cfg)) {
             reportAgentProgress({
-              stage: 'indexing',
-              title: '准备历史图片向量',
+              stage: 'searching',
+              title: '搜索已有历史图片向量',
               detail: query,
               sessionId,
             })
-            await ensureChatMediaVectorsForSearch(sessionId, cfg)
             const queryVec = await embedQuery(String(query), cfg)
             vectorHits = messageVectorService
               .searchMediaVectors(queryVec, { source: 'chat', sessionId, limit })
@@ -634,7 +615,9 @@ export const searchMedia = tool({
       return {
         matched: vectorHits.length > 0 ? true : matched,
         retrieval: vectorHits.length > 0 ? 'media_vector' : 'keyword',
-        note: terms.length > 0 && matched === false ? '没有匹配语境的媒体；可以放宽关键词或指定会话/时间。' : undefined,
+        note: terms.length > 0 && matched === false
+          ? '没有匹配语境的媒体；图片向量检索只使用已建立的媒体向量，不会现场向量化历史图片。'
+          : undefined,
         hits: mergedHits,
       }
     } catch (error) {
@@ -647,6 +630,7 @@ export const searchMomentMedia = tool({
   description:
     '检索朋友圈里的正文图片、评论图片和评论表情包，返回统一 mediaId。' +
     '适合“某人朋友圈第一张图是什么 / 某条朋友圈图片 / 评论里的图或表情”。' +
+    'keyword 存在且图片向量化已开启时，只搜索已经建立好的朋友圈图片向量，不会现场向量化历史图片。' +
     '用户说“朋友圈第一张图片”时默认 order=latest、target=post、limit=1，即最新含图朋友圈的第 1 张图。',
   inputSchema: z.object({
     usernames: z.array(z.string()).optional().describe('朋友圈发布者 username，可传多个；先用 list_contacts 解析联系人'),
@@ -740,15 +724,11 @@ export const searchMomentMedia = tool({
           const { messageVectorService, embedQuery } = await import('../../search/messageVectorService')
           const cfg = getEmbeddingConfig()
           if (messageVectorService.isMediaReady(cfg)) {
-            await messageVectorService.ensureMomentMediaVectors({
-              usernames,
-              keyword,
-              startTimeMs,
-              endTimeMs,
-              order,
-              target,
-              limit: Math.max(limit * 4, limit),
-            }, cfg)
+            reportAgentProgress({
+              stage: 'searching',
+              title: '搜索已有朋友圈图片向量',
+              detail: keyword,
+            })
             const queryVec = await embedQuery(String(keyword), cfg)
             vectorHits = messageVectorService
               .searchMediaVectors(queryVec, { source: 'moment', usernames, limit })
@@ -814,7 +794,7 @@ export const sendMediaFromHistory = tool({
 export function createSearchSimilarMedia(uploadedMediaContext?: AgentUploadedMediaContext) {
   return tool({
     description:
-      '用本轮用户上传的图片做以图找图，从聊天记录和朋友圈的历史图片/表情包向量里找相似媒体。' +
+      '用本轮用户上传的图片做以图找图，只从已经建立好的聊天记录和朋友圈历史图片向量里找相似媒体，不会现场向量化历史图片。' +
       'uploadedImageId 使用 upload-1、upload-2...；用户只发一张图时默认 upload-1。命中 mediaId 可继续交给 inspect_media_image 识别或 send_media_from_history 展示。',
     inputSchema: z.object({
       uploadedImageId: z.string().default('upload-1').describe('本轮用户上传图片 ID，如 upload-1；不确定时用 upload-1'),
@@ -845,28 +825,12 @@ export function createSearchSimilarMedia(uploadedMediaContext?: AgentUploadedMed
           }
         }
 
-        if (source === 'chat' || source === 'all') {
-          reportAgentProgress({
-            stage: 'indexing',
-            title: '准备聊天图片向量',
-            detail: image.filename || uploadedImageId,
-            sessionId,
-          })
-          await ensureChatMediaVectorsForSearch(sessionId, cfg)
-        }
-        if (source === 'moment' || source === 'all') {
-          reportAgentProgress({
-            stage: 'indexing',
-            title: '准备朋友圈图片向量',
-            detail: usernames?.join(', ') || '最近朋友圈',
-          })
-          await messageVectorService.ensureMomentMediaVectors({
-            usernames,
-            order: 'latest',
-            target: 'all',
-            limit: 120,
-          }, cfg)
-        }
+        reportAgentProgress({
+          stage: 'searching',
+          title: '搜索已有历史图片向量',
+          detail: image.filename || uploadedImageId,
+          sessionId,
+        })
 
         const query = await embedImage({ data: decoded.buffer, mediaType: decoded.mediaType, filename: image.filename }, cfg, { timeoutMs: 45000 })
         const hits = messageVectorService
@@ -878,7 +842,7 @@ export function createSearchSimilarMedia(uploadedMediaContext?: AgentUploadedMed
           source,
           imageInputMode: query.imageInputMode,
           hits,
-          note: hits.length === 0 ? '没有找到相似历史图片；可能还没有为相关聊天/朋友圈建立图片向量。' : undefined,
+          note: hits.length === 0 ? '没有找到相似历史图片；本工具只查已经建立好的历史图片向量，不会现场向量化聊天记录或朋友圈图片。' : undefined,
         }
       } catch (error) {
         return { error: error instanceof Error ? error.message : String(error) }

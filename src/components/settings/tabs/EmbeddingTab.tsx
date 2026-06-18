@@ -159,7 +159,7 @@ export default function EmbeddingTab() {
                 图片向量化
               </Label>
               <Description>
-                开启后，聊天记录和朋友圈里的历史图片会在检索时发送给当前嵌入服务商生成图片向量，用于文字找图和以图找图。
+                开启后，允许手动建立历史图片向量；Agent 找图时只搜索已经建立好的图片向量，不会临时上传历史图片做向量化。
               </Description>
             </div>
             <Switch
