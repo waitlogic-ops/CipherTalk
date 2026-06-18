@@ -22,6 +22,8 @@ const TOOL_TIMEOUT_OVERRIDES: Record<string, number> = {
   delegate_analysis: 600_000, // 子 Agent 批量整轮（最多 4 个并发子任务 + 可能触发首次重建），给更长上限
   search_stickers: 240_000, // 首次构建表情包词典可能触发最近会话补建索引
   search_media: 240_000, // 首次搜索历史媒体可能触发最近会话补建索引
+  search_moment_media: 240_000, // 朋友圈媒体检索可能触发 XML 解析和媒体元数据整理
+  inspect_media_image: 600_000, // 历史媒体解密 + 额外一次视觉模型调用
   send_random_image: 240_000, // 同上 + 图片解密
   send_media_from_history: 240_000, // 历史图片/表情包解密与落盘
   generate_image: 3_600_000, // 慢速作图模型经常超过 1 分钟，跟作图服务默认超时保持一致

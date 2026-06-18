@@ -911,7 +911,9 @@ const TOOL_LABELS: Record<string, string> = {
   moments_stats: '朋友圈统计',
   web_search: '联网搜索',
   generate_image: '生成图片',
+  search_moment_media: '找朋友圈图片',
   search_media: '找历史媒体',
+  inspect_media_image: '识别历史图片',
   send_media_from_history: '发送历史媒体',
   search_stickers: '翻表情包',
   send_sticker: '发表情包',
@@ -4561,19 +4563,20 @@ export default function AgentPage() {
                   return Boolean(displayText.trim())
                 })
               const shouldRenderMessageContent = message.role !== 'user' || hasRenderableUserText
-              // generate_image / send_sticker / send_random_image / send_media_from_history 的产出图：正文区直接展示
+              // generate_image / send_sticker / send_random_image / send_media_from_history / inspect_media_image 的产出图：正文区直接展示
               const renderGeneratedImageTool = (part: AgentMessagePart, index: number) => {
                 if (!isAgentChainPart(part)) return null
                 const isSticker = part.type === 'tool-send_sticker'
                 const isRandomImage = part.type === 'tool-send_random_image'
                 const isHistoryMedia = part.type === 'tool-send_media_from_history'
+                const isInspectMedia = part.type === 'tool-inspect_media_image'
                 const isGenerated = part.type === 'tool-generate_image'
-                if ((!isSticker && !isRandomImage && !isHistoryMedia && !isGenerated) || part.state !== 'output-available') return null
+                if ((!isSticker && !isRandomImage && !isHistoryMedia && !isInspectMedia && !isGenerated) || part.state !== 'output-available') return null
                 const output = part.output as { filePath?: unknown; from?: unknown; sender?: unknown; time?: unknown; mediaKind?: unknown } | undefined
                 const filePath = String(output?.filePath || '')
                 if (!filePath) return null
                 const imageSrc = `local-image://${encodeURIComponent(filePath)}`
-                const caption = isRandomImage || isHistoryMedia
+                const caption = isRandomImage || isHistoryMedia || isInspectMedia
                   ? [output?.sender, output?.from, output?.time].map((v) => String(v || '')).filter(Boolean).join(' · ')
                   : ''
                 return (
@@ -4591,7 +4594,7 @@ export default function AgentPage() {
                       type="button"
                     >
                       <img
-                        alt={isSticker || output?.mediaKind === 'emoji' ? '表情包' : isRandomImage || isHistoryMedia ? '聊天记录里的图片' : 'AI 生成的图片'}
+                        alt={isSticker || output?.mediaKind === 'emoji' ? '表情包' : isRandomImage || isHistoryMedia || isInspectMedia ? '历史图片' : 'AI 生成的图片'}
                         className={isSticker || output?.mediaKind === 'emoji'
                           ? 'max-h-40 max-w-40 rounded-(--agent-radius,12px)'
                           : 'max-h-90 max-w-full rounded-(--agent-radius,12px) border border-border/60 shadow-xs'}
