@@ -440,6 +440,7 @@ function extractMediaFromToolChunk(
     case 'generate_image':
     case 'send_random_image':
     case 'send_sticker':
+    case 'send_media_from_history':
       return { kind: 'image', filePath, source: 'tool' }
     case 'send_wechat_file':
       return { kind: 'file', filePath, source: 'tool' }

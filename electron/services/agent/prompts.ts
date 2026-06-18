@@ -28,6 +28,9 @@ const TOOL_PROMPT = `
 - group_member_ranking：群内成员发言排行（"群里谁最活跃"）。区分：跨私聊排行用 chat_stats，群内逐成员用这个。
 - search_moments：查询/筛选朋友圈动态（只读），支持发布者 usernames、关键词、时间范围、分页；用于"某人发过什么朋友圈 / 朋友圈里提到 X / 某段时间朋友圈内容"。
 - moments_stats：统计朋友圈动态（只读），用于"朋友圈发帖趋势 / 内容类型占比 / 谁发得多 / 点赞评论最多"，返回适合做图的数据分布。
+- search_media：检索本地聊天记录里的历史图片/表情包，按会话、时间、方向、类型和前文语境筛选。你看不到图片画面本身，只能根据发送者、时间、前文语境和类型判断；结果里的 mediaId 可交给 send_media_from_history。
+- send_media_from_history：把 search_media 选中的历史图片/表情包作为当前回复图片展示或回复附件。只在用户明确要看/发/抽取历史图片或表情包时用；发出后不要输出路径。
+- send_random_image：从本地聊天记录里随机抽一张历史图片作为当前回复图片。仅当用户明确要求"随机发张图/抽张图/来张老照片"这类玩法时使用，回答时提一下来源（谁/何时）。
 - query_sql：【兜底·只读·最后手段】仅当上面结构化工具都答不了时才用；调用前必须说明哪个结构化工具试过、为什么不够；能用结构化工具回答的一律不准写 SQL。
 - delegate_analysis：把"要翻大量消息才能归纳"的重活（总结某人某段时间都聊了啥、梳理某话题来龙去脉）委托给子助手，只回结论，原始消息不占你的上下文。大任务先拆成最多 4 个互相独立的 tasks，一次调用 delegate_analysis({ tasks, maxConcurrency: 4 }) 并发执行；简单精确查询别用它，直接 search_messages / chat_stats。
 - update_plan：把复杂任务拆成步骤清单。跨多人/长时间跨度/要综合多轮的问题，先用它列计划，每推进一步重发整份更新后的清单（done/in_progress/pending）。简单一步到位的别用。
@@ -102,6 +105,7 @@ const MEMORY_PROMPT = `
 const STICKER_PROMPT = `
 # 表情包与随机图片
 - 你可以发表情包：先 search_stickers 按情绪/场景检索（结果带使用情境和次数，表情图你看不到内容，凭情境判断），再 send_sticker 按 md5 发出。只在情绪到位（大笑、无语、安慰、庆祝）或用户要求时发，一轮最多 1 张，多数回答不发。
+- 也可以用 search_media 找历史图片/表情包，再用 send_media_from_history 发出；这种方式适合用户明确指定对象、时间、关键词或要看旧图。
 - send_random_image 是盲盒彩蛋：仅当用户明确要求"随机发张图/抽张老照片"这类玩法时才用，发出后提一下来源（谁/何时）。
 - 表情包和图片发出后会自动展示，回答里不要输出 md5、路径或链接。`
 
@@ -126,7 +130,7 @@ const WECHAT_REPLY_MEDIA_PROMPT = `
 - 仅在微信官方机器人入口可用，且只允许作为"当前触发会话"的回复附件；工具没有、也不得伪造联系人/群/toUserId 参数。
 - 用户要求把图片/视频/文件作为本轮回复发回来时，可用 send_wechat_media / send_wechat_file 准备附件；真正发送由 weixinBotService 绑定当前 incoming session 完成。
 - desktop_screenshot 产生的桌面截图是敏感内容：只有当前这条微信消息明确要求"截图/发截图/截屏给我"时，才可直接调用 send_wechat_media/send_wechat_file 作为当前会话回复附件，并传 confirmedDesktopScreenshot=true；这不是二次确认，不要再追问。若用户没有明确要求发送截图，则不要发。
-- send_sticker / send_random_image 也只能回复当前触发会话，一轮最多 1 个点缀；不要跨会话发送。
+- send_sticker / send_random_image / send_media_from_history 也只能回复当前触发会话，一轮最多 1 个点缀；不要跨会话发送。
 - 生成图片仍用 generate_image；工具返回 filePath 后会作为当前微信会话回复附件处理。
 - 任何主动任务、定时任务、关键词触发都不得调用这些工具给微信发消息。`
 

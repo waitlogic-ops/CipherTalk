@@ -27,6 +27,7 @@ import { webSearch } from './webSearch'
 import { generateImage } from './generateImage'
 import { searchStickers, sendSticker } from './stickers'
 import { sendRandomImage } from './sendRandomImage'
+import { searchMedia, sendMediaFromHistory } from './mediaHistory'
 import { sendWechatFile } from './sendWechatFile'
 import { personaControl } from './personaControl'
 import { sendWechatMedia } from './wechatMedia'
@@ -48,6 +49,9 @@ export function buildBaseTools(_scope: AgentScope): ToolSet {
     group_member_ranking: groupMemberRanking,
     search_moments: searchMoments,
     moments_stats: momentsStats,
+    search_media: searchMedia,
+    send_media_from_history: sendMediaFromHistory,
+    send_random_image: sendRandomImage,
     query_sql: querySql,
     update_plan: updatePlan,
   }
