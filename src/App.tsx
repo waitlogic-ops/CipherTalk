@@ -76,6 +76,7 @@ type UpdateDownloadProgressPayload = {
   transferred: number
   total: number
   bytesPerSecond: number
+  message?: string
 }
 
 function App() {
@@ -846,13 +847,13 @@ function App() {
         <div className="download-progress-capsule">
           <div className="capsule-compact">
             <Loader2 className="spin" size={14} />
-            <span>更新中 {progressPercent.toFixed(0)}%</span>
+            <span>{downloadProgress?.message || `更新中 ${progressPercent.toFixed(0)}%`}</span>
           </div>
           <div className="capsule-detail">
             <div className="capsule-detail-head">
               <Loader2 className="spin" size={14} />
               <span className="capsule-detail-title">
-                正在下载更新{updateInfo?.version ? ` v${updateInfo.version}` : ''}
+                {downloadProgress?.message || `正在下载更新${updateInfo?.version ? ` v${updateInfo.version}` : ''}`}
               </span>
               <span className="capsule-detail-pct">{progressPercent.toFixed(0)}%</span>
             </div>
@@ -860,8 +861,14 @@ function App() {
               <div className="progress-bar-fill" style={{ width: `${progressPercent}%` }} />
             </div>
             <div className="capsule-detail-meta">
-              <span>{formatBytes(downloadProgress?.transferred ?? updateInfo?.diagnostics?.downloadedBytes)} / {formatBytes(downloadProgress?.total ?? updateInfo?.diagnostics?.totalBytes)}</span>
-              <span>{formatSpeed(downloadProgress?.bytesPerSecond ?? 0)}</span>
+              {downloadProgress?.message ? (
+                <span>{downloadProgress.message}</span>
+              ) : (
+                <>
+                  <span>{formatBytes(downloadProgress?.transferred ?? updateInfo?.diagnostics?.downloadedBytes)} / {formatBytes(downloadProgress?.total ?? updateInfo?.diagnostics?.totalBytes)}</span>
+                  <span>{formatSpeed(downloadProgress?.bytesPerSecond ?? 0)}</span>
+                </>
+              )}
             </div>
           </div>
         </div>

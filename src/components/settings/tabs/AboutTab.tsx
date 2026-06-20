@@ -76,17 +76,23 @@ function AboutTab({
             <div className="space-y-3">
               <ProgressBar value={downloadProgress} valueLabel={`${downloadProgress.toFixed(0)}%`}>
                 <div className="flex items-center justify-between gap-3">
-                  <Label>下载进度</Label>
+                  <Label>{downloadProgressDetail?.message || '下载进度'}</Label>
                   <ProgressBar.Output />
                 </div>
                 <ProgressBar.Track>
                   <ProgressBar.Fill />
                 </ProgressBar.Track>
               </ProgressBar>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted">
-                <span>{formatFileSize(transferredBytes)} / {formatFileSize(totalBytes)}</span>
-                <span>速度 {formatSpeed(downloadProgressDetail?.bytesPerSecond ?? 0)}</span>
-              </div>
+              {downloadProgressDetail?.message ? (
+                <div className="text-sm text-muted">
+                  <span>{downloadProgressDetail.message}</span>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted">
+                  <span>{formatFileSize(transferredBytes)} / {formatFileSize(totalBytes)}</span>
+                  <span>速度 {formatSpeed(downloadProgressDetail?.bytesPerSecond ?? 0)}</span>
+                </div>
+              )}
             </div>
           ) : (
             <Button type="button" onPress={onUpdateNow} isDisabled={isDownloading}>

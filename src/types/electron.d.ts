@@ -133,6 +133,7 @@ export interface UpdateDownloadProgressPayload {
   transferred: number
   total: number
   bytesPerSecond: number
+  message?: string
 }
 
 export type HttpApiListenMode = 'localhost' | 'lan'

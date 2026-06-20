@@ -403,6 +403,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       transferred: number
       total: number
       bytesPerSecond: number
+      message?: string
     }) => void) => {
       ipcRenderer.on('app:downloadProgress', (_, progress) => callback(progress))
       return () => ipcRenderer.removeAllListeners('app:downloadProgress')

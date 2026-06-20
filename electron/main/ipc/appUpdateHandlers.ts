@@ -1,7 +1,28 @@
 import { ipcMain } from 'electron'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import { unlink } from 'fs/promises'
 import { autoUpdater, type ProgressInfo } from 'electron-updater'
 import { appUpdateService } from '../../services/appUpdateService'
 import type { MainProcessContext } from '../context'
+
+const execFileAsync = promisify(execFile)
+
+async function convertDmgToZip(dmgPath: string, zipPath: string, onProgress?: (msg: string) => void): Promise<void> {
+  const mountPoint = `${dmgPath}.mount`
+  try {
+    onProgress?.('挂载 DMG...')
+    await execFileAsync('hdiutil', ['attach', '-nobrowse', '-mountpoint', mountPoint, dmgPath])
+    onProgress?.('查找应用...')
+    const appEntry = (await execFileAsync('find', [mountPoint, '-maxdepth', '1', '-name', '*.app'])).stdout.trim()
+    if (!appEntry) throw new Error('DMG 中未找到 .app')
+    onProgress?.('打包为 ZIP...')
+    await execFileAsync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', '-xj', appEntry, zipPath])
+    onProgress?.('清理挂载点...')
+  } finally {
+    try { await execFileAsync('hdiutil', ['detach', mountPoint, '-force', '-quiet']) } catch {}
+  }
+}
 
 /**
  * 应用更新下载与安装 IPC。
@@ -55,7 +76,7 @@ export function registerAppUpdateHandlers(ctx: MainProcessContext): void {
       })
     }
 
-    const onUpdateDownloaded = () => {
+    const onUpdateDownloaded = async () => {
       appUpdateService.updateDiagnostics({
         phase: 'downloaded',
         progressPercent: 100,
@@ -65,6 +86,37 @@ export function registerAppUpdateHandlers(ctx: MainProcessContext): void {
         targetVersion,
         fallbackToFull: appUpdateService.getCachedUpdateInfo()?.diagnostics?.fallbackToFull || false
       })
+
+      if (process.platform === 'darwin' && downloadedFilePaths?.[0]) {
+        const dmgPath = downloadedFilePaths[0]
+        if (dmgPath.endsWith('.dmg')) {
+          const zipPath = dmgPath.replace(/\.dmg$/, '.zip')
+          try {
+            appUpdateService.updateDiagnostics({ lastEvent: '正在转换 DMG 为 ZIP' })
+            ctx.broadcastToWindows('app:downloadProgress', {
+              percent: 100,
+              transferred: 0,
+              total: 0,
+              bytesPerSecond: 0,
+              message: '正在转换 DMG 为 ZIP...'
+            })
+            await convertDmgToZip(dmgPath, zipPath, (msg) => {
+              appUpdateService.updateDiagnostics({ lastEvent: msg })
+              ctx.broadcastToWindows('app:downloadProgress', {
+                percent: 100,
+                transferred: 0,
+                total: 0,
+                bytesPerSecond: 0,
+                message: msg
+              })
+            })
+            await unlink(dmgPath)
+          } catch (e) {
+            ctx.getLogService()?.error('AppUpdate', 'DMG 转 ZIP 失败', { error: String(e) })
+          }
+        }
+      }
+
       ctx.appWithQuitFlag.isQuitting = true
       appUpdateService.updateDiagnostics({
         phase: 'installing',
@@ -91,8 +143,9 @@ export function registerAppUpdateHandlers(ctx: MainProcessContext): void {
     autoUpdater.once('update-downloaded', onUpdateDownloaded)
     autoUpdater.once('error', onUpdaterError)
 
+    let downloadedFilePaths: string[] | undefined
     try {
-      await autoUpdater.downloadUpdate()
+      downloadedFilePaths = await autoUpdater.downloadUpdate()
     } catch (error) {
       ctx.setIsInstallingUpdate(false)
       onUpdaterError(error as Error)
