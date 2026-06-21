@@ -11,15 +11,10 @@ const execFileAsync = promisify(execFile)
 async function convertDmgToZip(dmgPath: string, zipPath: string, onProgress?: (msg: string) => void): Promise<void> {
   const mountPoint = `${dmgPath}.mount`
   try {
-    onProgress?.('解压 DMG...')
-    try {
-      await execFileAsync('ditto', ['-x', '-k', dmgPath, mountPoint])
-    } catch {
-      onProgress?.('解压失败，尝试挂载...')
-      await execFileAsync('hdiutil', ['attach', '-nobrowse', '-mountpoint', mountPoint, dmgPath])
-    }
+    onProgress?.('挂载 DMG...')
+    await execFileAsync('hdiutil', ['attach', '-nobrowse', '-mountpoint', mountPoint, dmgPath])
     onProgress?.('查找应用...')
-    const appEntry = (await execFileAsync('find', [mountPoint, '-maxdepth', '3', '-name', '*.app', '-type', 'd'])).stdout.trim().split('\n')[0]
+    const appEntry = (await execFileAsync('find', [mountPoint, '-maxdepth', '1', '-name', '*.app'])).stdout.trim()
     if (!appEntry) throw new Error('DMG 中未找到 .app')
     onProgress?.('打包为 ZIP...')
     await execFileAsync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', '-xj', appEntry, zipPath])
